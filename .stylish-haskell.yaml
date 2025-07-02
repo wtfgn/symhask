@@ -88,7 +88,7 @@ steps:
       # Whether or not to break enums onto several lines
       #
       # Default: false
-      break_enums: false
+      break_enums: true
   
       # Whether or not to break single constructor data types before `=` sign
       #
