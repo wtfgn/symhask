@@ -19,8 +19,16 @@ extra-source-files:
 # common to point users to the README.md file.
 description:         Please see the README on GitHub at <https://github.com/wtfgn/symhask#readme>
 
+default-extensions:
+- LambdaCase
+- OverloadedStrings
+
 dependencies:
 - base >= 4.7 && < 5
+- containers >= 0.6 && < 0.8
+- deepseq >= 1.4 && < 1.6
+- text >= 2.0 && < 2.2
+- text-show >= 3.10 && < 3.12
 
 ghc-options:
 - -Wall

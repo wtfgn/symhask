@@ -26,15 +26,23 @@ source-repository head
 library
   exposed-modules:
       SymHask
+      SymHask.Symbolic
   other-modules:
       Paths_symhask
   autogen-modules:
       Paths_symhask
   hs-source-dirs:
       src
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       base >=4.7 && <5
+    , containers >=0.6 && <0.8
+    , deepseq >=1.4 && <1.6
+    , text >=2.0 && <2.2
+    , text-show >=3.10 && <3.12
   default-language: Haskell2010
 
 executable symhask-exe
@@ -45,10 +53,17 @@ executable symhask-exe
       Paths_symhask
   hs-source-dirs:
       app
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers >=0.6 && <0.8
+    , deepseq >=1.4 && <1.6
     , symhask
+    , text >=2.0 && <2.2
+    , text-show >=3.10 && <3.12
   default-language: Haskell2010
 
 test-suite symhask-test
@@ -60,8 +75,15 @@ test-suite symhask-test
       Paths_symhask
   hs-source-dirs:
       test
+  default-extensions:
+      LambdaCase
+      OverloadedStrings
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers >=0.6 && <0.8
+    , deepseq >=1.4 && <1.6
     , symhask
+    , text >=2.0 && <2.2
+    , text-show >=3.10 && <3.12
   default-language: Haskell2010
