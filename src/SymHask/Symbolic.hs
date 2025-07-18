@@ -1,40 +1,52 @@
 {-# LANGUAGE DeriveAnyClass  #-}
+{-# LANGUAGE DeriveFunctor   #-}
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE DerivingVia     #-}
 {-# LANGUAGE InstanceSigs    #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module SymHask.Symbolic
-    ( BinaryFunction (..)
-    , Expression (..)
-    , UnaryFunction (..)
-    , getBinaryFunction
-    , getUnaryFunction
-    , pattern (:**:)
+    ( -- * Core Data Types
+      Expression (..)
+    , ExpressionResult (..)
+      -- * Smart Constructors
+    , mkDifference
+    , mkFactorial
+    , mkFraction
+    , mkFunction
+    , mkNumber
+    , mkPower
+    , mkProduct
+    , mkQuotient
+    , mkSum
+    , mkSymbol
+    , mkUndefined
+      -- * Predicates
+    , isConstant
+    , isFraction
+    , isNumber
+    , isSymbol
+    , isUndefined
+      -- * Helper Functions
+    , getConst
+    , getPowerBase
+    , getPowerExponent
+    , getTerm
+      -- * Pattern Synonyms
     , pattern (:*:)
     , pattern (:+:)
     , pattern (:-:)
     , pattern (:/:)
+    , pattern (:^:)
     , pattern Abs'
-    , pattern Acos'
-    , pattern Acosh'
-    , pattern Asin'
-    , pattern Asinh'
-    , pattern Atan'
-    , pattern Atanh'
     , pattern Cos'
-    , pattern Cosh'
     , pattern Exp'
     , pattern Log'
-    , pattern LogBase'
-    , pattern Negate'
-    , pattern Pi'
+    , pattern Neg
     , pattern Signum'
     , pattern Sin'
-    , pattern Sinh'
     , pattern Sqrt'
     , pattern Tan'
-    , pattern Tanh'
     ) where
 
 import           Control.DeepSeq  (NFData)
@@ -45,187 +57,381 @@ import           GHC.Generics     (Generic)
 import           TextShow         (TextShow)
 import           TextShow.Generic (FromGeneric (..))
 
+
+-- ============================================================================
+-- * Core Data Types
+-- ============================================================================
+
+-- | Unified symbolic expression type
+-- This represents all kinds of mathematical expressions in the CAS
 data Expression
-  = Number Integer
-  | Symbol Text
-  | UnaryApply UnaryFunction Expression
-  | BinaryApply BinaryFunction Expression Expression
+  = Number Integer -- Numbers (integers)
+  | Fraction Integer Integer -- Rational numbers (n/d)
+  | Symbol Text -- Variables and constants
+  | Product [Expression] -- Multiplication: a * b * c * ...
+  | Sum [Expression] -- Addition: a + b + c + ...
+  | Quotient Expression Expression -- Division: a / b
+  | Difference [Expression] -- Subtraction: a - b - c - ...
+  | Power Expression Expression -- Exponentiation: a ^ b
+  | Factorial Expression -- Factorial: n!
+  | Function Text [Expression] -- Function application: f(x, y, ...)
+  | Undefined -- Undefined/error expressions
   deriving (Eq, Generic, NFData, Read, Show)
   deriving (TextShow)
     via FromGeneric Expression
 
+-- | Result type for expression operations
+data ExpressionResult a
+  = ExpressionSuccess a -- Successful result with an expression
+  | ExpressionUndefined Text -- Mathematical undefined case
+  | ExpressionError Text -- Programming/computation error
+  deriving (Eq, Functor, Show)
 
-data UnaryFunction
-  = Negate
-  | Abs
-  | Signum
-  | Exp
-  | Log
-  | Sqrt
-  | Sin
-  | Cos
-  | Tan
-  | Asin
-  | Acos
-  | Atan
-  | Sinh
-  | Cosh
-  | Tanh
-  | Asinh
-  | Acosh
-  | Atanh
-  deriving (Bounded, Enum, Eq, Generic, NFData, Read, Show)
-  deriving (TextShow)
-    via FromGeneric UnaryFunction
+-- ============================================================================
+-- * Smart Constructors
+-- ============================================================================
 
-pattern Pi' :: Expression
-pattern Pi' = Symbol "pi"
+-- | Create a number expression
+mkNumber :: Integer -> Expression
+mkNumber = Number
 
-pattern Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh' :: Expression -> Expression
-pattern Negate' x = UnaryApply Negate x
-pattern Abs' x = UnaryApply Abs x
-pattern Signum' x = UnaryApply Signum x
-pattern Exp' x = UnaryApply Exp x
-pattern Log' x = UnaryApply Log x
-pattern Sqrt' x = UnaryApply Sqrt x
-pattern Sin' x = UnaryApply Sin x
-pattern Cos' x = UnaryApply Cos x
-pattern Tan' x = UnaryApply Tan x
-pattern Asin' x = UnaryApply Asin x
-pattern Acos' x = UnaryApply Acos x
-pattern Atan' x = UnaryApply Atan x
-pattern Sinh' x = UnaryApply Sinh x
-pattern Cosh' x = UnaryApply Cosh x
-pattern Tanh' x = UnaryApply Tanh x
-pattern Asinh' x = UnaryApply Asinh x
-pattern Acosh' x = UnaryApply Acosh x
-pattern Atanh' x = UnaryApply Atanh x
+-- | Create a fraction expression
+mkFraction :: Integer -> Integer -> Expression
+mkFraction = Fraction
 
-data BinaryFunction
-  = Add
-  | Subtract
-  | Multiply
-  | Divide
-  | Power
-  | LogBase
-  deriving (Bounded, Enum, Eq, Generic, NFData, Read, Show)
-  deriving (TextShow)
-    via FromGeneric BinaryFunction
+-- | Create a symbol expression
+mkSymbol :: Text -> Expression
+mkSymbol = Symbol
 
-pattern (:+:), (:*:), (:-:), (:/:), (:**:), LogBase' :: Expression -> Expression -> Expression
-pattern x :+: y = BinaryApply Add x y
-pattern x :*: y = BinaryApply Multiply x y
-pattern x :-: y = BinaryApply Subtract x y
-pattern x :/: y = BinaryApply Divide x y
-pattern x :**: y = BinaryApply Power x y
-pattern LogBase' x y = BinaryApply LogBase x y
+-- | Create a sum expression
+mkSum :: [Expression] -> Expression
+mkSum = Sum
+
+-- | Create a product expression
+mkProduct :: [Expression] -> Expression
+mkProduct = Product
+
+-- | Create a difference expression
+mkDifference :: [Expression] -> Expression
+mkDifference = Difference
+
+-- | Create a quotient expression
+mkQuotient :: Expression -> Expression -> Expression
+mkQuotient = Quotient
+
+-- | Create a power expression
+mkPower :: Expression -> Expression -> Expression
+mkPower = Power
+
+-- | Create a factorial expression
+mkFactorial :: Expression -> Expression
+mkFactorial = Factorial
+
+-- | Create a function expression
+mkFunction :: Text -> [Expression] -> Expression
+mkFunction = Function
+
+-- | Create an undefined expression
+mkUndefined :: Expression
+mkUndefined = Undefined
+
+-- ============================================================================
+-- * Predicates
+-- ============================================================================
+
+-- | Check if expression is undefined
+isUndefined :: Expression -> Bool
+isUndefined Undefined      = True
+isUndefined (Fraction _ 0) = True
+isUndefined _              = False
+
+-- | Check if expression is a number
+isNumber :: Expression -> Bool
+isNumber (Number _) = True
+isNumber _          = False
+
+-- | Check if expression is a fraction
+isFraction :: Expression -> Bool
+isFraction (Fraction _ _) = True
+isFraction _              = False
+
+-- | Check if expression is a symbol
+isSymbol :: Expression -> Bool
+isSymbol (Symbol _) = True
+isSymbol _          = False
+
+-- | Check if expression is a constant (number or fraction)
+isConstant :: Expression -> Bool
+isConstant (Number _)     = True
+isConstant (Fraction _ _) = True
+isConstant _              = False
+
+-- ============================================================================
+-- * Type Class Instances
+-- ============================================================================
 
 instance IsString Expression where
   fromString :: String -> Expression
-  fromString = Symbol . fromString
+  fromString = mkSymbol . fromString
 
+-- | Arithmetic operations create simplified expressions
 instance Num Expression where
   (+) :: Expression -> Expression -> Expression
-  x + y = x :+: y
+  x + y = mkSum [x, y]
 
   (*) :: Expression -> Expression -> Expression
-  x * y = x :*: y
+  x * y = mkProduct [x, y]
 
   (-) :: Expression -> Expression -> Expression
-  x - y = x :-: y
+  x - y = mkDifference [x, y]
 
   negate :: Expression -> Expression
-  negate = Negate'
+  negate x = mkProduct [mkNumber (-1), x]
 
   abs :: Expression -> Expression
-  abs = Abs'
+  abs x = mkFunction "abs" [x]
 
   signum :: Expression -> Expression
-  signum = Signum'
+  signum x = mkFunction "signum" [x]
 
   fromInteger :: Integer -> Expression
-  fromInteger = Number
+  fromInteger = mkNumber
 
 instance Fractional Expression where
   (/) :: Expression -> Expression -> Expression
-  x / y = x :/: y
+  x / y = mkQuotient x y
 
   fromRational :: Rational -> Expression
-  fromRational r = Number (numerator r) / Number (denominator r)
+  fromRational r = mkFraction (fromInteger $ numerator r) (fromInteger $ denominator r)
 
-instance Floating Expression where
-  pi :: Expression
-  pi = Symbol "pi"
+-- ============================================================================
+-- * Result Type Instances
+-- ============================================================================
 
-  exp :: Expression -> Expression
-  exp = Exp'
+instance Applicative ExpressionResult where
+  pure = ExpressionSuccess
+  (ExpressionSuccess f) <*> (ExpressionSuccess x) = ExpressionSuccess (f x)
+  (ExpressionUndefined msg) <*> _                 = ExpressionUndefined msg
+  (ExpressionError msg) <*> _                     = ExpressionError msg
+  _ <*> (ExpressionUndefined msg)                 = ExpressionUndefined msg
+  _ <*> (ExpressionError msg)                     = ExpressionError msg
 
-  log :: Expression -> Expression
-  log = Log'
+instance Monad ExpressionResult where
+  return = pure
+  (ExpressionSuccess x) >>= f     = f x
+  (ExpressionUndefined msg) >>= _ = ExpressionUndefined msg
+  (ExpressionError msg) >>= _     = ExpressionError msg
 
-  sqrt :: Expression -> Expression
-  sqrt = Sqrt'
+-- ============================================================================
+-- * Pattern Synonyms
+-- ============================================================================
 
-  sin :: Expression -> Expression
-  sin = Sin'
+-- | Binary arithmetic operations
+pattern (:+:) :: Expression -> Expression -> Expression
+pattern x :+: y = Sum [x, y]
 
-  cos :: Expression -> Expression
-  cos = Cos'
+pattern (:*:) :: Expression -> Expression -> Expression
+pattern x :*: y = Product [x, y]
 
-  tan :: Expression -> Expression
-  tan = Tan'
+pattern (:-:) :: Expression -> Expression -> Expression
+pattern x :-: y = Difference [x, y]
 
-  asin :: Expression -> Expression
-  asin = Asin'
+pattern (:/:) :: Expression -> Expression -> Expression
+pattern x :/: y = Quotient x y
 
-  acos :: Expression -> Expression
-  acos = Acos'
+pattern (:^:) :: Expression -> Expression -> Expression
+pattern x :^: y = Power x y
 
-  atan :: Expression -> Expression
-  atan = Atan'
+-- | Unary operations
+pattern Neg :: Expression -> Expression
+pattern Neg x = Product [Number (-1), x]
 
-  sinh :: Expression -> Expression
-  sinh = Sinh'
+-- | Common mathematical functions
+pattern Abs' :: Expression -> Expression
+pattern Abs' x = Function "abs" [x]
 
-  cosh :: Expression -> Expression
-  cosh = Cosh'
+pattern Signum' :: Expression -> Expression
+pattern Signum' x = Function "signum" [x]
 
-  tanh :: Expression -> Expression
-  tanh = Tanh'
+pattern Sqrt' :: Expression -> Expression
+pattern Sqrt' x = Function "sqrt" [x]
 
-  asinh :: Expression -> Expression
-  asinh = Asinh'
+pattern Exp' :: Expression -> Expression
+pattern Exp' x = Function "exp" [x]
 
-  acosh :: Expression -> Expression
-  acosh = Acosh'
+pattern Log' :: Expression -> Expression
+pattern Log' x = Function "log" [x]
 
-  atanh :: Expression -> Expression
-  atanh = Atanh'
+pattern Sin' :: Expression -> Expression
+pattern Sin' x = Function "sin" [x]
 
-getUnaryFunction :: (Floating a) => UnaryFunction -> (a -> a)
-getUnaryFunction Negate = negate
-getUnaryFunction Abs    = abs
-getUnaryFunction Signum = signum
-getUnaryFunction Exp    = exp
-getUnaryFunction Log    = log
-getUnaryFunction Sqrt   = sqrt
-getUnaryFunction Sin    = sin
-getUnaryFunction Cos    = cos
-getUnaryFunction Tan    = tan
-getUnaryFunction Asin   = asin
-getUnaryFunction Acos   = acos
-getUnaryFunction Atan   = atan
-getUnaryFunction Sinh   = sinh
-getUnaryFunction Cosh   = cosh
-getUnaryFunction Tanh   = tanh
-getUnaryFunction Asinh  = asinh
-getUnaryFunction Acosh  = acosh
-getUnaryFunction Atanh  = atanh
+pattern Cos' :: Expression -> Expression
+pattern Cos' x = Function "cos" [x]
 
-getBinaryFunction :: (Floating a) => BinaryFunction -> (a -> a -> a)
-getBinaryFunction Add      = (+)
-getBinaryFunction Multiply = (*)
-getBinaryFunction Subtract = (-)
-getBinaryFunction Divide   = (/)
-getBinaryFunction Power    = (**)
-getBinaryFunction LogBase  = logBase
+pattern Tan' :: Expression -> Expression
+pattern Tan' x = Function "tan" [x]
+
+-- ============================================================================
+-- * Helper Functions
+-- ============================================================================
+getPowerBase :: Expression -> ExpressionResult Expression
+getPowerBase = \case
+  u@(Symbol _) -> ExpressionSuccess u
+  u@(Product _) -> ExpressionSuccess u
+  u@(Sum _) -> ExpressionSuccess u
+  u@(Factorial _) -> ExpressionSuccess u
+  u@(Function _ _) -> ExpressionSuccess u
+
+  (Power b _) -> ExpressionSuccess b
+
+  Number _ -> ExpressionUndefined "Power base cannot be a number"
+  Fraction _ _ -> ExpressionUndefined "Power base cannot be a fraction"
+
+  _ -> ExpressionError
+    "Unsupported expression type for power base extraction, only \
+    \a symbol, product, sum, factorial or function is expected."
+
+getPowerExponent :: Expression -> ExpressionResult Expression
+getPowerExponent = \case
+  (Symbol _) -> ExpressionSuccess $ mkNumber 1
+  (Product _) -> ExpressionSuccess $ mkNumber 1
+  (Sum _) -> ExpressionSuccess $ mkNumber 1
+  (Factorial _) -> ExpressionSuccess $ mkNumber 1
+  (Function _ _) -> ExpressionSuccess $ mkNumber 1
+
+  (Power _ e) -> ExpressionSuccess e
+
+  (Number _) -> ExpressionUndefined "Power exponent cannot be a number"
+  (Fraction _ _) -> ExpressionUndefined "Power exponent cannot be a fraction"
+
+  _ -> ExpressionError
+    "Unsupported expression type for power exponent extraction, only \
+    \a symbol, product, sum, factorial or function is expected."
+
+getTerm :: Expression -> ExpressionResult Expression
+getTerm = \case
+  u@(Symbol _) -> ExpressionSuccess $ mkProduct [u]
+  u@(Sum _) -> ExpressionSuccess $ mkProduct [u]
+  u@(Power _ _) -> ExpressionSuccess $ mkProduct [u]
+  u@(Factorial _) -> ExpressionSuccess $ mkProduct [u]
+  u@(Function _ _) -> ExpressionSuccess $ mkProduct [u]
+  u@(Product (x : xs)) -> ExpressionSuccess $ if isConstant x then mkProduct xs else u
+
+  Number _ -> ExpressionUndefined "Cannot extract term from a number"
+  Fraction _ _ -> ExpressionUndefined "Cannot extract term from a fraction"
+
+  _ -> ExpressionError
+    "Unsupported expression type for term extraction, only \
+    \a number, fraction, symbol, product, sum, difference, quotient, \
+    \power, factorial or function is expected."
+
+getConst :: Expression -> ExpressionResult Expression
+getConst = \case
+  Symbol _ -> ExpressionSuccess $ mkNumber 1
+  Sum _ -> ExpressionSuccess $ mkNumber 1
+  Power _ _ -> ExpressionSuccess $ mkNumber 1
+  Factorial _ -> ExpressionSuccess $ mkNumber 1
+  Function _ _ -> ExpressionSuccess $ mkNumber 1
+  Product (x : _) -> ExpressionSuccess $ if isConstant x then x else mkNumber 1
+
+  Number _ -> ExpressionUndefined "Cannot extract constant from a number"
+  Fraction _ _ -> ExpressionUndefined "Cannot extract constant from a fraction"
+
+  _ -> ExpressionError
+    "Unsupported expression type for constant extraction, only \
+    \a number, fraction, symbol, product, sum, difference, quotient, \
+    \power, factorial or function is expected."
+
+
+-- | Canonical ordering instance for Expression
+-- This provides a total order suitable for general use
+instance Ord Expression where
+  compare :: Expression -> Expression -> Ordering
+  -- Compare constants
+  compare (Number n1) (Number n2) = compare n1 n2
+  compare (Fraction n1 d1) (Fraction n2 d2) = compare (n1 * d2) (n2 * d1)
+  compare (Number x) (Fraction n d) = compare (x * d) n
+  compare (Fraction n d) (Number x) = compare n (x * d)
+
+  -- Compare symbols (lexicographically)
+  compare (Symbol s1) (Symbol s2) = compare s1 s2
+
+  -- Compare products and sums by their operands
+  compare (Product xs1) (Product xs2) = compareOperandList (reverse xs1) (reverse xs2)
+  compare (Sum xs1) (Sum xs2) = compareOperandList (reverse xs1) (reverse xs2)
+
+  -- Compare powers by base and exponent
+  compare u@(Power _ _) v@(Power _ _) =
+    case do
+      b1 <- getPowerBase u
+      b2 <- getPowerBase v
+      e1 <- getPowerExponent u
+      e2 <- getPowerExponent v
+      case compare b1 b2 of
+        EQ    -> return $ compare e1 e2
+        other -> return other
+    of
+      ExpressionSuccess ord -> ord
+      _                     -> EQ -- Fallback if extraction fails
+
+  -- Compare factorials
+  compare (Factorial x) (Factorial y) = compare x y
+
+  -- Compare functions by name and arguments
+  compare (Function f1 args1) (Function f2 args2) =
+    case compare f1 f2 of
+      EQ    -> compareOperandList args1 args2
+      other -> other
+
+  -- Compare when one is an integer or fraction and the other is any other type
+  -- This ensures constant must be the first operand
+  compare (Number _) _ = LT
+  compare (Fraction _ _) _ = LT
+
+  -- Compare when one is a product and the other is a power, sum, factorial,
+  -- function or symbol
+  compare u@(Product _) v@(Power _ _) = compare u (mkProduct [v])
+  compare u@(Product _) v@(Sum _) = compare u (mkProduct [v])
+  compare u@(Product _) v@(Factorial _ ) = compare u (mkProduct [v])
+  compare u@(Product _) v@(Function _ _) = compare u (mkProduct [v])
+  compare u@(Product _) v@(Symbol _) = compare u (mkProduct [v])
+
+-- Compare when one is a power and the other is a sum, factorial, function, or symbol
+  compare u@(Power _ _) v@(Sum _) = compare u (mkPower v 1)
+  compare u@(Power _ _) v@(Factorial _) = compare u (mkPower v 1)
+  compare u@(Power _ _) v@(Function _ _) = compare u (mkPower v 1)
+  compare u@(Power _ _) v@(Symbol _) = compare u (mkPower v 1)
+
+  -- Compare when one is a sum and the other is a factorial, function, or symbol
+  compare u@(Sum _) v@(Factorial _) = compare u (mkSum [v])
+  compare u@(Sum _) v@(Function _ _) = compare u (mkSum [v])
+  compare u@(Sum _) v@(Symbol _) = compare u (mkSum [v])
+
+  -- Compare when one is a factorial and the other is a function or symbol
+  compare u@(Factorial x) v@(Function _ _) =
+    if x == v then EQ
+    else compare u (mkFactorial v)
+  compare u@(Factorial x) v@(Symbol _) =
+    if x == v then EQ
+    else compare u (mkFactorial v)
+
+  -- Compare when one is a function and the other is a symbol
+  compare u@(Function f _) v@(Symbol s) =
+    if u == v then EQ
+    else compare f s
+
+  -- If all else fails, reverse the comparison
+  -- This ensures a total order even for mixed types
+  compare u v = case compare v u of
+    EQ -> EQ
+    LT -> GT
+    GT -> LT
+
+compareOperandList :: [Expression] -> [Expression] -> Ordering
+compareOperandList [] [] = EQ
+compareOperandList [] _  = LT
+compareOperandList _  [] = GT
+compareOperandList (x1:xs1) (x2:xs2) =
+  case compare x1 x2 of
+    EQ    -> compareOperandList xs1 xs2
+    other -> other
