@@ -1,4 +1,4 @@
-module Integers
+module SymHask.Numeric.Integers
     ( extendedEuclidean
     ) where
 
