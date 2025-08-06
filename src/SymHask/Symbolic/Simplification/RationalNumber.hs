@@ -1,12 +1,12 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE MultiWayIf      #-}
 
 module SymHask.Symbolic.Simplification.RationalNumber
     ( simplifyRNE
+    , simplifyRationalNumber
     ) where
 
-import           SymHask.Symbolic (Expression (..), ExpressionResult (..), mkFraction)
+import           SymHask.Symbolic (Expression (..), ExpressionResult (..),
+                                   mkFraction)
 
 -- This module is intended to handle simplification of rational numbers
 -- and related operations on symbolic expressions involving rational numbers.
@@ -18,7 +18,7 @@ import           SymHask.Symbolic (Expression (..), ExpressionResult (..), mkFra
 simplifyRationalNumber :: Expression -> ExpressionResult Expression
 simplifyRationalNumber = \case
   u@(Number _) -> ExpressionSuccess u
-  
+
   Fraction n d
     | d == 0 -> ExpressionUndefined "Division by zero"
     | n == 0 -> ExpressionSuccess (Number 0)
@@ -26,8 +26,8 @@ simplifyRationalNumber = \case
     | otherwise ->
       let
         g = gcd n d
-        n' = abs $ n `div` g
-        d' = abs $ d `div` g
+        n' = if d > 0 then n `div` g else (-n) `div` g
+        d' = if d > 0 then d `div` g else (-d) `div` g
       in ExpressionSuccess (Fraction n' d')
   _ -> ExpressionError
     "Unsupported expression type for rational simplification, only \
@@ -46,7 +46,7 @@ simplifyStep = \case
   u@(Fraction _ d)
     | d == 0 -> ExpressionUndefined "Division by zero"
     | otherwise -> simplifyRationalNumber u
-  
+
   Sum [x] -> simplifyStep x
 
   Sum [x, y] -> do
@@ -144,25 +144,25 @@ evaluatePower v n = do
   if
     | vn == 0 && n >= 1 -> ExpressionSuccess (Number 0)
     | vn == 0 && n <= 0 -> ExpressionUndefined "Zero to non-positive power"
-    | n > 0 -> evaluatePower v (n - 1) >>= \s -> evaluateProduct s v
-    | n == 0 -> ExpressionSuccess (Number 1)
-    | n == -1 -> ExpressionSuccess (mkFraction vd vn)
-    | n < -1 -> evaluatePower (mkFraction vd vn) (-n)
-    | otherwise -> ExpressionError "Invalid power operation"
+    | n > 0             -> evaluatePower v (n - 1) >>= \s -> evaluateProduct s v
+    | n == 0            -> ExpressionSuccess (Number 1)
+    | n == -1           -> ExpressionSuccess (mkFraction vd vn)
+    | n < -1            -> evaluatePower (mkFraction vd vn) (-n)
+    | otherwise         -> ExpressionError "Invalid power operation"
 
 -- ============================================================================
 -- * Accessor Functions
 -- ============================================================================
 
 getNumerator :: Expression -> Maybe Integer
-getNumerator (Number n) = Just n
+getNumerator (Number n)     = Just n
 getNumerator (Fraction n _) = Just n
-getNumerator _ = Nothing
+getNumerator _              = Nothing
 
 getDenominator :: Expression -> Maybe Integer
-getDenominator (Number _) = Just 1
+getDenominator (Number _)     = Just 1
 getDenominator (Fraction _ d) = Just d
-getDenominator _ = Nothing
+getDenominator _              = Nothing
 
 -- ============================================================================
 -- * Safe Accessor Functions
