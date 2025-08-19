@@ -20,19 +20,18 @@ module SymHask.Symbolic
     , mkQuotient
     , mkSum
     , mkSymbol
-    , mkUndefined
       -- * Predicates
     , isConstant
     , isFraction
     , isNumber
     , isSymbol
-    , isUndefined
       -- * Helper Functions
     , getConst
     , getPowerBase
     , getPowerExponent
     , getTerm
       -- * Pattern Synonyms
+    , isAtomic
     , pattern (:*:)
     , pattern (:+:)
     , pattern (:-:)
@@ -54,9 +53,9 @@ import           Data.Ratio       (denominator, numerator)
 import           Data.String      (IsString, fromString)
 import           Data.Text        (Text)
 import           GHC.Generics     (Generic)
+import           Prelude          hiding ((^))
 import           TextShow         (TextShow)
 import           TextShow.Generic (FromGeneric (..))
-
 
 -- ============================================================================
 -- * Core Data Types
@@ -75,7 +74,6 @@ data Expression
   | Power Expression Expression -- Exponentiation: a ^ b
   | Factorial Expression -- Factorial: n!
   | Function Text [Expression] -- Function application: f(x, y, ...)
-  | Undefined -- Undefined/error expressions
   deriving (Eq, Generic, NFData, Read, Show)
   deriving (TextShow)
     via FromGeneric Expression
@@ -131,19 +129,9 @@ mkFactorial = Factorial
 mkFunction :: Text -> [Expression] -> Expression
 mkFunction = Function
 
--- | Create an undefined expression
-mkUndefined :: Expression
-mkUndefined = Undefined
-
 -- ============================================================================
 -- * Predicates
 -- ============================================================================
-
--- | Check if expression is undefined
-isUndefined :: Expression -> Bool
-isUndefined Undefined      = True
-isUndefined (Fraction _ 0) = True
-isUndefined _              = False
 
 -- | Check if expression is a number
 isNumber :: Expression -> Bool
@@ -165,6 +153,13 @@ isConstant :: Expression -> Bool
 isConstant (Number _)     = True
 isConstant (Fraction _ _) = True
 isConstant _              = False
+
+-- Check if expression is atomic (a constant, symbol, or number)
+isAtomic :: Expression -> Bool
+isAtomic (Number _)     = True
+isAtomic (Fraction _ _) = True
+isAtomic (Symbol _)     = True
+isAtomic _              = False
 
 -- ============================================================================
 -- * Type Class Instances
@@ -202,7 +197,75 @@ instance Fractional Expression where
   x / y = mkQuotient x y
 
   fromRational :: Rational -> Expression
-  fromRational r = mkFraction (fromInteger $ numerator r) (fromInteger $ denominator r)
+  fromRational r = mkFraction n d
+    where
+      n = numerator r
+      d = denominator r
+
+instance Floating Expression where
+  pi :: Expression
+  pi = mkSymbol "pi"
+
+  exp :: Expression -> Expression
+  exp x = mkFunction "exp" [x]
+
+  log :: Expression -> Expression
+  log x = mkFunction "log" [x]
+
+  sqrt :: Expression -> Expression
+  sqrt x = mkFunction "sqrt" [x]
+
+  (**) :: Expression -> Expression -> Expression
+  x ** y = mkPower x y
+
+  logBase :: Expression -> Expression -> Expression
+  logBase b x = mkFunction "logBase" [b, x]
+
+  sin :: Expression -> Expression
+  sin x = mkFunction "sin" [x]
+
+  cos :: Expression -> Expression
+  cos x = mkFunction "cos" [x]
+
+  tan :: Expression -> Expression
+  tan x = mkFunction "tan" [x]
+
+  asin :: Expression -> Expression
+  asin x = mkFunction "asin" [x]
+
+  acos :: Expression -> Expression
+  acos x = mkFunction "acos" [x]
+
+  atan :: Expression -> Expression
+  atan x = mkFunction "atan" [x]
+
+  sinh :: Expression -> Expression
+  sinh x = mkFunction "sinh" [x]
+
+  cosh :: Expression -> Expression
+  cosh x = mkFunction "cosh" [x]
+
+  tanh :: Expression -> Expression
+  tanh x = mkFunction "tanh" [x]
+
+  asinh :: Expression -> Expression
+  asinh x = mkFunction "asinh" [x]
+
+  acosh :: Expression -> Expression
+  acosh x = mkFunction "acosh" [x]
+
+  atanh :: Expression -> Expression
+  atanh x = mkFunction "atanh" [x]
+
+-- ============================================================================
+-- * Power Operators
+-- ============================================================================
+
+-- | Power operator for expressions with integer exponents
+(^) :: Expression -> Integer -> Expression
+base ^ n = mkPower base (mkNumber n)
+
+infixr 8 ^
 
 -- ============================================================================
 -- * Result Type Instances
@@ -342,6 +405,9 @@ getConst = \case
     \a number, fraction, symbol, product, sum, difference, quotient, \
     \power, factorial or function is expected."
 
+-- ============================================================================
+-- * Canonical Ordering Instance
+-- ============================================================================
 
 -- | Canonical ordering instance for Expression
 -- This provides a total order suitable for general use

@@ -25,10 +25,14 @@ source-repository head
 
 library
   exposed-modules:
-      Integers
-      RationalNumber
       SymHask
+      SymHask.Numeric.Integers
       SymHask.Symbolic
+      SymHask.Symbolic.Operators
+      SymHask.Symbolic.Simplification
+      SymHask.Symbolic.Simplification.AlgebraicRingOrder
+      SymHask.Symbolic.Simplification.AutomaticSimplification
+      SymHask.Symbolic.Simplification.RationalNumber
   other-modules:
       Paths_symhask
   autogen-modules:
