@@ -258,16 +258,6 @@ instance Floating Expression where
   atanh x = mkFunction "atanh" [x]
 
 -- ============================================================================
--- * Power Operators
--- ============================================================================
-
--- | Power operator for expressions with integer exponents
-(^) :: Expression -> Integer -> Expression
-base ^ n = mkPower base (mkNumber n)
-
-infixr 8 ^
-
--- ============================================================================
 -- * Result Type Instances
 -- ============================================================================
 
