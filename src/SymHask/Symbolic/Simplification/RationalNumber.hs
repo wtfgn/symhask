@@ -54,11 +54,11 @@ simplifyStep = \case
     y' <- simplifyStep y
     evaluateSum x' y'
 
-  Difference [x] -> do
+  UnaryDifference x -> do
     x' <- simplifyStep x
     evaluateProduct (Number (-1)) x'
 
-  Difference [x, y] -> do
+  BinaryDifference x y -> do
     x' <- simplifyStep x
     y' <- simplifyStep y
     evaluateDifference x' y'

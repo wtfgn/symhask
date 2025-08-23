@@ -11,9 +11,9 @@ import           SymHask.Symbolic                               (Expression (..)
                                                                  getPowerExponent,
                                                                  getTerm,
                                                                  isConstant,
-                                                                 mkDifference,
+                                                                 mkUnaryDifference,
+                                                                 mkBinaryDifference,
                                                                  mkFactorial,
-                                                                 mkFraction,
                                                                  mkFunction,
                                                                  mkNumber,
                                                                  mkPower,
@@ -57,9 +57,14 @@ automaticSimplify = \case
     v' <- automaticSimplify v
     simplifyQuotient $ mkQuotient u' v'
 
-  Difference xs -> do
-    xs' <- traverse automaticSimplify xs
-    simplifyDifference $ mkDifference xs'
+  UnaryDifference u -> do
+    u' <- automaticSimplify u
+    simplifyDifference $ mkUnaryDifference u'
+
+  BinaryDifference u v -> do
+    u' <- automaticSimplify u
+    v' <- automaticSimplify v
+    simplifyDifference $ mkBinaryDifference u' v'
 
   Factorial u -> do
     u' <- automaticSimplify u
@@ -274,11 +279,10 @@ simplifyQuotient = \case
 -- ============================================================================
 simplifyDifference :: Expression -> ExpressionResult Expression
 simplifyDifference = \case
-  Difference [u] -> simplifyProduct $ mkProduct [mkNumber (-1), u]
-  Difference [u, v] -> do
+  UnaryDifference u -> simplifyProduct $ mkProduct [mkNumber (-1), u]
+  BinaryDifference u v -> do
     v' <- simplifyProduct $ mkProduct [mkNumber (-1), v]
     simplifySum $ mkSum [u, v']
-  Difference _ -> ExpressionError "Expected an unary or binary Difference."
   _ -> ExpressionError "Expected a Difference expression."
 
 -- ============================================================================

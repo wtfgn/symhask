@@ -10,7 +10,8 @@ module SymHask.Symbolic
       Expression (..)
     , ExpressionResult (..)
       -- * Smart Constructors
-    , mkDifference
+    , mkBinaryDifference
+    , mkUnaryDifference
     , mkFactorial
     , mkFraction
     , mkFunction
@@ -48,14 +49,14 @@ module SymHask.Symbolic
     , pattern Tan'
     ) where
 
-import           Control.DeepSeq  (NFData)
-import           Data.Ratio       (denominator, numerator)
-import           Data.String      (IsString, fromString)
-import           Data.Text        (Text)
-import           GHC.Generics     (Generic)
-import           Prelude          hiding ((^))
-import           TextShow         (TextShow)
-import           TextShow.Generic (FromGeneric (..))
+import           Control.DeepSeq            (NFData)
+import           Data.Ratio                 (denominator, numerator)
+import           Data.String                (IsString, fromString)
+import           Data.Text                  (Text)
+import           GHC.Generics               (Generic)
+import           Prelude                    hiding ((^))
+import           TextShow                   (TextShow)
+import           TextShow.Generic           (FromGeneric (..))
 
 -- ============================================================================
 -- * Core Data Types
@@ -70,7 +71,8 @@ data Expression
   | Product [Expression] -- Multiplication: a * b * c * ...
   | Sum [Expression] -- Addition: a + b + c + ...
   | Quotient Expression Expression -- Division: a / b
-  | Difference [Expression] -- Subtraction: a - b - c - ...
+  | UnaryDifference Expression -- Unary negation: -a
+  | BinaryDifference Expression Expression -- Subtraction: a - b
   | Power Expression Expression -- Exponentiation: a ^ b
   | Factorial Expression -- Factorial: n!
   | Function Text [Expression] -- Function application: f(x, y, ...)
@@ -109,9 +111,13 @@ mkSum = Sum
 mkProduct :: [Expression] -> Expression
 mkProduct = Product
 
--- | Create a difference expression
-mkDifference :: [Expression] -> Expression
-mkDifference = Difference
+-- | Create a unary difference expression
+mkUnaryDifference :: Expression -> Expression
+mkUnaryDifference = UnaryDifference
+
+-- | Create a binary difference expression
+mkBinaryDifference :: Expression -> Expression -> Expression
+mkBinaryDifference = BinaryDifference
 
 -- | Create a quotient expression
 mkQuotient :: Expression -> Expression -> Expression
@@ -178,10 +184,10 @@ instance Num Expression where
   x * y = mkProduct [x, y]
 
   (-) :: Expression -> Expression -> Expression
-  x - y = mkDifference [x, y]
+  x - y = mkBinaryDifference x y
 
   negate :: Expression -> Expression
-  negate x = mkProduct [mkNumber (-1), x]
+  negate = mkUnaryDifference
 
   abs :: Expression -> Expression
   abs x = mkFunction "abs" [x]
@@ -287,7 +293,7 @@ pattern (:*:) :: Expression -> Expression -> Expression
 pattern x :*: y = Product [x, y]
 
 pattern (:-:) :: Expression -> Expression -> Expression
-pattern x :-: y = Difference [x, y]
+pattern x :-: y = BinaryDifference x y
 
 pattern (:/:) :: Expression -> Expression -> Expression
 pattern x :/: y = Quotient x y
@@ -297,7 +303,7 @@ pattern x :^: y = Power x y
 
 -- | Unary operations
 pattern Neg :: Expression -> Expression
-pattern Neg x = Product [Number (-1), x]
+pattern Neg x = UnaryDifference x
 
 -- | Common mathematical functions
 pattern Abs' :: Expression -> Expression
@@ -491,3 +497,52 @@ compareOperandList (x1:xs1) (x2:xs2) =
   case compare x1 x2 of
     EQ    -> compareOperandList xs1 xs2
     other -> other
+
+-- ============================================================================
+-- * Computation
+-- ============================================================================
+
+-- toFunction
+--   :: (Floating b, RealFrac b)
+--   => Expression
+--   -> (Text -> (a -> b))
+--   -> (a -> ExpressionResult b)
+-- toFunction expr varMap = case expr of
+--   Number n -> const . pure $ fromInteger n
+--   Fraction n d -> const . pure $ fromRational (n % d)
+--   Symbol s -> pure . varMap s
+--   Product xs -> \v -> foldr (\x acc -> liftA2 (*) acc (toFunction x varMap v)) (pure 1) xs
+--   Sum xs -> \v -> foldr (\x acc -> liftA2 (+) acc (toFunction x varMap v)) (pure 0) xs
+--   Quotient n d -> \v -> liftA2 (/) (toFunction n varMap v) (toFunction d varMap v)
+--   Difference xs -> \v -> case xs of
+--     [] -> pure 0  -- Edge case: empty difference
+--     (first:rest) -> foldr (\x acc -> liftA2 (-) acc (toFunction x varMap v))
+--                           (toFunction first varMap v)
+--                           rest
+--   Power x y -> \v -> liftA2 (**) (toFunction x varMap v) (toFunction y varMap v)
+--   Factorial x -> \v -> toFunction x varMap v >>= safeFactorial
+--   Function f args -> \v -> case f of
+--     "exp" -> fmap exp (toFunction (head args) varMap v)
+--     "log" -> fmap log (toFunction (head args) varMap v)
+--     "sqrt" -> fmap sqrt (toFunction (head args) varMap v)
+--     "logBase" -> case args of
+--       [b, x] -> liftA2 logBase (toFunction b varMap v) (toFunction x varMap v)
+--       _      -> ExpressionError "logBase requires exactly two arguments"
+--     "sin" -> fmap sin (toFunction (head args) varMap v)
+--     "cos" -> fmap cos (toFunction (head args) varMap v)
+--     "tan" -> fmap tan (toFunction (head args) varMap v)
+--     "asin" -> fmap asin (toFunction (head args) varMap v)
+--     "acos" -> fmap acos (toFunction (head args) varMap v)
+--     "atan" -> fmap atan (toFunction (head args) varMap v)
+--     "abs" -> fmap abs (toFunction (head args) varMap v)
+--     "signum" -> fmap signum (toFunction (head args) varMap v)
+--     "sinh" -> fmap sinh (toFunction (head args) varMap v)
+--     "cosh" -> fmap cosh (toFunction (head args) varMap v)
+--     "tanh" -> fmap tanh (toFunction (head args) varMap v)
+--     "asinh" -> fmap asinh (toFunction (head args) varMap v)
+--     "acosh" -> fmap acosh (toFunction (head args) varMap v)
+--     "atanh" -> fmap atanh (toFunction (head args) varMap v)
+--     "negate" -> fmap negate (toFunction (head args) varMap v)
+--     _ -> ExpressionError $ "Unsupported function: " <> f
+
+
