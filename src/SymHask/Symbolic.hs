@@ -28,6 +28,14 @@ module SymHask.Symbolic
     , isFraction
     , isNumber
     , isSymbol
+    , isProduct
+    , isSum
+    , isQuotient
+    , isUnaryDifference
+    , isBinaryDifference
+    , isPower
+    , isFactorial
+    , isFunction
       -- * Helper Functions
     , getConst
     , getPowerBase
@@ -172,6 +180,46 @@ isFraction _              = False
 isSymbol :: Expression -> Bool
 isSymbol (Symbol _) = True
 isSymbol _          = False
+
+-- | Check if expression is a product
+isProduct :: Expression -> Bool
+isProduct (Product _) = True
+isProduct _           = False
+
+-- | Check if expression is a sum
+isSum :: Expression -> Bool
+isSum (Sum _) = True
+isSum _      = False
+
+-- | Check if expression is a quotient
+isQuotient :: Expression -> Bool
+isQuotient (Quotient _ _) = True
+isQuotient _              = False
+
+-- | Check if expression is a unary difference
+isUnaryDifference :: Expression -> Bool
+isUnaryDifference (UnaryDifference _) = True
+isUnaryDifference _                   = False
+
+-- | Check if expression is a binary difference
+isBinaryDifference :: Expression -> Bool
+isBinaryDifference (BinaryDifference _ _) = True
+isBinaryDifference _                      = False
+
+-- | Check if expression is a power
+isPower :: Expression -> Bool
+isPower (Power _ _) = True
+isPower _          = False
+
+-- | Check if expression is a factorial
+isFactorial :: Expression -> Bool
+isFactorial (Factorial _) = True
+isFactorial _             = False
+
+-- | Check if expression is a function
+isFunction :: Expression -> Bool
+isFunction (Function _ _) = True
+isFunction _              = False
 
 -- | Check if expression is a constant (number or fraction)
 isConstant :: Expression -> Bool
