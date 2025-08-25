@@ -28,9 +28,10 @@ library
       SymHask
       SymHask.Numeric.Integers
       SymHask.Symbolic
+      SymHask.Symbolic.Evaluation
+      SymHask.Symbolic.Factorial
       SymHask.Symbolic.Operators
       SymHask.Symbolic.Simplification
-      SymHask.Symbolic.Simplification.AlgebraicRingOrder
       SymHask.Symbolic.Simplification.AutomaticSimplification
       SymHask.Symbolic.Simplification.RationalNumber
   other-modules:
@@ -76,6 +77,7 @@ test-suite symhask-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      FactorialTests
       Paths_symhask
   autogen-modules:
       Paths_symhask
