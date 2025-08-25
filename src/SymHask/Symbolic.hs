@@ -4,14 +4,15 @@
 {-# LANGUAGE DerivingVia     #-}
 {-# LANGUAGE InstanceSigs    #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedLists #-}
 
 module SymHask.Symbolic
     ( -- * Core Data Types
       Expression (..)
     , ExpressionResult (..)
+    , Operands
       -- * Smart Constructors
     , mkBinaryDifference
-    , mkUnaryDifference
     , mkFactorial
     , mkFraction
     , mkFunction
@@ -21,6 +22,7 @@ module SymHask.Symbolic
     , mkQuotient
     , mkSum
     , mkSymbol
+    , mkUnaryDifference
       -- * Predicates
     , isConstant
     , isFraction
@@ -31,36 +33,53 @@ module SymHask.Symbolic
     , getPowerBase
     , getPowerExponent
     , getTerm
+    , getUnaryFunction
+    , getBinaryFunction
+    , toMaybe
+    , toEither
       -- * Pattern Synonyms
     , isAtomic
     , pattern (:*:)
     , pattern (:+:)
     , pattern (:-:)
     , pattern (:/:)
-    , pattern (:^:)
+    , pattern (:**:)
     , pattern Abs'
+    , pattern Acos'
+    , pattern Acosh'
+    , pattern Asin'
+    , pattern Asinh'
+    , pattern Atan'
+    , pattern Atanh'
     , pattern Cos'
+    , pattern Cosh'
     , pattern Exp'
     , pattern Log'
-    , pattern Neg
+    , pattern Negate'
     , pattern Signum'
     , pattern Sin'
+    , pattern Sinh'
     , pattern Sqrt'
     , pattern Tan'
+    , pattern Tanh'
+    , pattern LogBase'
     ) where
 
-import           Control.DeepSeq            (NFData)
-import           Data.Ratio                 (denominator, numerator)
-import           Data.String                (IsString, fromString)
-import           Data.Text                  (Text)
-import           GHC.Generics               (Generic)
-import           Prelude                    hiding ((^))
-import           TextShow                   (TextShow)
-import           TextShow.Generic           (FromGeneric (..))
+import           Control.DeepSeq  (NFData)
+import           Data.Ratio       (denominator, numerator)
+import           Data.String      (IsString, fromString)
+import           Data.Text        (Text)
+import           GHC.Generics     (Generic)
+import           Prelude          hiding ((^))
+import           TextShow         (TextShow)
+import           TextShow.Generic (FromGeneric (..))
+import qualified Data.List.NonEmpty as NE
 
 -- ============================================================================
 -- * Core Data Types
 -- ============================================================================
+
+type Operands = NE.NonEmpty Expression
 
 -- | Unified symbolic expression type
 -- This represents all kinds of mathematical expressions in the CAS
@@ -68,14 +87,14 @@ data Expression
   = Number Integer -- Numbers (integers)
   | Fraction Integer Integer -- Rational numbers (n/d)
   | Symbol Text -- Variables and constants
-  | Product [Expression] -- Multiplication: a * b * c * ...
-  | Sum [Expression] -- Addition: a + b + c + ...
+  | Product Operands -- Multiplication: a * b * c * ...
+  | Sum Operands -- Addition: a + b + c + ...
   | Quotient Expression Expression -- Division: a / b
   | UnaryDifference Expression -- Unary negation: -a
   | BinaryDifference Expression Expression -- Subtraction: a - b
   | Power Expression Expression -- Exponentiation: a ^ b
   | Factorial Expression -- Factorial: n!
-  | Function Text [Expression] -- Function application: f(x, y, ...)
+  | Function Text Operands -- Function application: f(x, y, ...)
   deriving (Eq, Generic, NFData, Read, Show)
   deriving (TextShow)
     via FromGeneric Expression
@@ -105,11 +124,11 @@ mkSymbol = Symbol
 
 -- | Create a sum expression
 mkSum :: [Expression] -> Expression
-mkSum = Sum
+mkSum = Sum . NE.fromList
 
 -- | Create a product expression
 mkProduct :: [Expression] -> Expression
-mkProduct = Product
+mkProduct = Product . NE.fromList
 
 -- | Create a unary difference expression
 mkUnaryDifference :: Expression -> Expression
@@ -133,7 +152,7 @@ mkFactorial = Factorial
 
 -- | Create a function expression
 mkFunction :: Text -> [Expression] -> Expression
-mkFunction = Function
+mkFunction f args = Function f (NE.fromList args)
 
 -- ============================================================================
 -- * Predicates
@@ -284,52 +303,33 @@ instance Monad ExpressionResult where
 -- ============================================================================
 -- * Pattern Synonyms
 -- ============================================================================
-
--- | Binary arithmetic operations
-pattern (:+:) :: Expression -> Expression -> Expression
+pattern (:+:), (:*:), (:-:), (:/:), (:**:), LogBase' :: Expression -> Expression -> Expression
 pattern x :+: y = Sum [x, y]
-
-pattern (:*:) :: Expression -> Expression -> Expression
 pattern x :*: y = Product [x, y]
-
-pattern (:-:) :: Expression -> Expression -> Expression
 pattern x :-: y = BinaryDifference x y
-
-pattern (:/:) :: Expression -> Expression -> Expression
 pattern x :/: y = Quotient x y
+pattern x :**: y = Power x y
+pattern LogBase' x y = Function "logBase" [x, y]
 
-pattern (:^:) :: Expression -> Expression -> Expression
-pattern x :^: y = Power x y
-
--- | Unary operations
-pattern Neg :: Expression -> Expression
-pattern Neg x = UnaryDifference x
-
--- | Common mathematical functions
-pattern Abs' :: Expression -> Expression
+pattern Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh' :: Expression -> Expression
+pattern Negate' x = Function "negate" [x]
 pattern Abs' x = Function "abs" [x]
-
-pattern Signum' :: Expression -> Expression
 pattern Signum' x = Function "signum" [x]
-
-pattern Sqrt' :: Expression -> Expression
-pattern Sqrt' x = Function "sqrt" [x]
-
-pattern Exp' :: Expression -> Expression
 pattern Exp' x = Function "exp" [x]
-
-pattern Log' :: Expression -> Expression
 pattern Log' x = Function "log" [x]
-
-pattern Sin' :: Expression -> Expression
+pattern Sqrt' x = Function "sqrt" [x]
 pattern Sin' x = Function "sin" [x]
-
-pattern Cos' :: Expression -> Expression
 pattern Cos' x = Function "cos" [x]
-
-pattern Tan' :: Expression -> Expression
 pattern Tan' x = Function "tan" [x]
-
+pattern Asin' x = Function "asin" [x]
+pattern Acos' x = Function "acos" [x]
+pattern Atan' x = Function "atan" [x]
+pattern Sinh' x = Function "sinh" [x]
+pattern Cosh' x = Function "cosh" [x]
+pattern Tanh' x = Function "tanh" [x]
+pattern Asinh' x = Function "asinh" [x]
+pattern Acosh' x = Function "acosh" [x]
+pattern Atanh' x = Function "atanh" [x]
 -- ============================================================================
 -- * Helper Functions
 -- ============================================================================
@@ -374,7 +374,7 @@ getTerm = \case
   u@(Power _ _) -> ExpressionSuccess $ mkProduct [u]
   u@(Factorial _) -> ExpressionSuccess $ mkProduct [u]
   u@(Function _ _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Product (x : xs)) -> ExpressionSuccess $ if isConstant x then mkProduct xs else u
+  u@(Product (x NE.:| xs)) -> ExpressionSuccess $ if isConstant x then mkProduct xs else u
 
   Number _ -> ExpressionUndefined "Cannot extract term from a number"
   Fraction _ _ -> ExpressionUndefined "Cannot extract term from a fraction"
@@ -391,7 +391,7 @@ getConst = \case
   Power _ _ -> ExpressionSuccess $ mkNumber 1
   Factorial _ -> ExpressionSuccess $ mkNumber 1
   Function _ _ -> ExpressionSuccess $ mkNumber 1
-  Product (x : _) -> ExpressionSuccess $ if isConstant x then x else mkNumber 1
+  Product (x NE.:| _) -> ExpressionSuccess $ if isConstant x then x else mkNumber 1
 
   Number _ -> ExpressionUndefined "Cannot extract constant from a number"
   Fraction _ _ -> ExpressionUndefined "Cannot extract constant from a fraction"
@@ -400,6 +400,49 @@ getConst = \case
     "Unsupported expression type for constant extraction, only \
     \a number, fraction, symbol, product, sum, difference, quotient, \
     \power, factorial or function is expected."
+
+getUnaryFunction :: (Floating a) => Expression -> Maybe (a -> a)
+getUnaryFunction = \case
+  Negate' _ -> Just negate
+  Abs' _   -> Just abs
+  Signum' _ -> Just signum
+  Exp' _    -> Just exp
+  Log' _    -> Just log
+  Sqrt' _   -> Just sqrt
+  Sin' _    -> Just sin
+  Cos' _    -> Just cos
+  Tan' _    -> Just tan
+  Asin' _   -> Just asin
+  Acos' _   -> Just acos
+  Atan' _   -> Just atan
+  Sinh' _   -> Just sinh
+  Cosh' _   -> Just cosh
+  Tanh' _   -> Just tanh
+  Asinh' _  -> Just asinh
+  Acosh' _  -> Just acosh
+  Atanh' _  -> Just atanh
+  _         -> Nothing
+
+getBinaryFunction :: (Floating a) => Expression -> Maybe (a -> a -> a)
+getBinaryFunction = \case
+  _ :+: _ -> Just (+)
+  _ :-: _ -> Just (-)
+  _ :*: _ -> Just (*)
+  _ :/: _ -> Just (/)
+  _ :**: _ -> Just (**)
+  _       -> Nothing
+
+toMaybe :: ExpressionResult a -> Maybe a
+toMaybe = \case
+  ExpressionSuccess x -> Just x
+  ExpressionError _   -> Nothing
+  ExpressionUndefined _ -> Nothing
+
+toEither :: ExpressionResult a -> Either Text a
+toEither = \case
+  ExpressionSuccess x -> Right x
+  ExpressionError msg -> Left msg
+  ExpressionUndefined msg -> Left msg
 
 -- ============================================================================
 -- * Canonical Ordering Instance
@@ -419,8 +462,10 @@ instance Ord Expression where
   compare (Symbol s1) (Symbol s2) = compare s1 s2
 
   -- Compare products and sums by their operands
-  compare (Product xs1) (Product xs2) = compareOperandList (reverse xs1) (reverse xs2)
-  compare (Sum xs1) (Sum xs2) = compareOperandList (reverse xs1) (reverse xs2)
+  compare (Product xs1) (Product xs2) =
+    compareOperandList (NE.reverse xs1) (NE.reverse xs2)
+  compare (Sum xs1) (Sum xs2) =
+    compareOperandList (NE.reverse xs1) (NE.reverse xs2)
 
   -- Compare powers by base and exponent
   compare u@(Power _ _) v@(Power _ _) =
@@ -489,60 +534,7 @@ instance Ord Expression where
     LT -> GT
     GT -> LT
 
-compareOperandList :: [Expression] -> [Expression] -> Ordering
-compareOperandList [] [] = EQ
-compareOperandList [] _  = LT
-compareOperandList _  [] = GT
-compareOperandList (x1:xs1) (x2:xs2) =
-  case compare x1 x2 of
-    EQ    -> compareOperandList xs1 xs2
-    other -> other
-
--- ============================================================================
--- * Computation
--- ============================================================================
-
--- toFunction
---   :: (Floating b, RealFrac b)
---   => Expression
---   -> (Text -> (a -> b))
---   -> (a -> ExpressionResult b)
--- toFunction expr varMap = case expr of
---   Number n -> const . pure $ fromInteger n
---   Fraction n d -> const . pure $ fromRational (n % d)
---   Symbol s -> pure . varMap s
---   Product xs -> \v -> foldr (\x acc -> liftA2 (*) acc (toFunction x varMap v)) (pure 1) xs
---   Sum xs -> \v -> foldr (\x acc -> liftA2 (+) acc (toFunction x varMap v)) (pure 0) xs
---   Quotient n d -> \v -> liftA2 (/) (toFunction n varMap v) (toFunction d varMap v)
---   Difference xs -> \v -> case xs of
---     [] -> pure 0  -- Edge case: empty difference
---     (first:rest) -> foldr (\x acc -> liftA2 (-) acc (toFunction x varMap v))
---                           (toFunction first varMap v)
---                           rest
---   Power x y -> \v -> liftA2 (**) (toFunction x varMap v) (toFunction y varMap v)
---   Factorial x -> \v -> toFunction x varMap v >>= safeFactorial
---   Function f args -> \v -> case f of
---     "exp" -> fmap exp (toFunction (head args) varMap v)
---     "log" -> fmap log (toFunction (head args) varMap v)
---     "sqrt" -> fmap sqrt (toFunction (head args) varMap v)
---     "logBase" -> case args of
---       [b, x] -> liftA2 logBase (toFunction b varMap v) (toFunction x varMap v)
---       _      -> ExpressionError "logBase requires exactly two arguments"
---     "sin" -> fmap sin (toFunction (head args) varMap v)
---     "cos" -> fmap cos (toFunction (head args) varMap v)
---     "tan" -> fmap tan (toFunction (head args) varMap v)
---     "asin" -> fmap asin (toFunction (head args) varMap v)
---     "acos" -> fmap acos (toFunction (head args) varMap v)
---     "atan" -> fmap atan (toFunction (head args) varMap v)
---     "abs" -> fmap abs (toFunction (head args) varMap v)
---     "signum" -> fmap signum (toFunction (head args) varMap v)
---     "sinh" -> fmap sinh (toFunction (head args) varMap v)
---     "cosh" -> fmap cosh (toFunction (head args) varMap v)
---     "tanh" -> fmap tanh (toFunction (head args) varMap v)
---     "asinh" -> fmap asinh (toFunction (head args) varMap v)
---     "acosh" -> fmap acosh (toFunction (head args) varMap v)
---     "atanh" -> fmap atanh (toFunction (head args) varMap v)
---     "negate" -> fmap negate (toFunction (head args) varMap v)
---     _ -> ExpressionError $ "Unsupported function: " <> f
+compareOperandList :: Operands -> Operands -> Ordering
+compareOperandList xs1 xs2 = compare (NE.toList xs1) (NE.toList xs2)
 
 

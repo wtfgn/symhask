@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiWayIf      #-}
+{-# LANGUAGE OverloadedLists #-}
 
 module SymHask.Symbolic.Simplification.RationalNumber
     ( simplifyRNE
