@@ -3,8 +3,8 @@
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE DerivingVia     #-}
 {-# LANGUAGE InstanceSigs    #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module SymHask.Symbolic
     ( -- * Core Data Types
@@ -24,34 +24,35 @@ module SymHask.Symbolic
     , mkSymbol
     , mkUnaryDifference
       -- * Predicates
-    , isConstant
-    , isFraction
-    , isNumber
-    , isSymbol
-    , isProduct
-    , isSum
-    , isQuotient
-    , isUnaryDifference
     , isBinaryDifference
-    , isPower
+    , isConstant
     , isFactorial
+    , isFraction
     , isFunction
+    , isNumber
+    , isPower
+    , isProduct
+    , isQuotient
+    , isSum
+    , isSymbol
+    , isUnaryDifference
       -- * Helper Functions
+    , getBinaryFunction
     , getConst
+    , getOperands
     , getPowerBase
     , getPowerExponent
     , getTerm
     , getUnaryFunction
-    , getBinaryFunction
-    , toMaybe
     , toEither
+    , toMaybe
       -- * Pattern Synonyms
     , isAtomic
+    , pattern (:**:)
     , pattern (:*:)
     , pattern (:+:)
     , pattern (:-:)
     , pattern (:/:)
-    , pattern (:**:)
     , pattern Abs'
     , pattern Acos'
     , pattern Acosh'
@@ -63,6 +64,7 @@ module SymHask.Symbolic
     , pattern Cosh'
     , pattern Exp'
     , pattern Log'
+    , pattern LogBase'
     , pattern Negate'
     , pattern Signum'
     , pattern Sin'
@@ -70,18 +72,17 @@ module SymHask.Symbolic
     , pattern Sqrt'
     , pattern Tan'
     , pattern Tanh'
-    , pattern LogBase'
     ) where
 
-import           Control.DeepSeq  (NFData)
-import           Data.Ratio       (denominator, numerator)
-import           Data.String      (IsString, fromString)
-import           Data.Text        (Text)
-import           GHC.Generics     (Generic)
-import           Prelude          hiding ((^))
-import           TextShow         (TextShow)
-import           TextShow.Generic (FromGeneric (..))
+import           Control.DeepSeq    (NFData)
 import qualified Data.List.NonEmpty as NE
+import           Data.Ratio         (denominator, numerator)
+import           Data.String        (IsString, fromString)
+import           Data.Text          (Text)
+import           GHC.Generics       (Generic)
+import           Prelude            hiding ((^))
+import           TextShow           (TextShow)
+import           TextShow.Generic   (FromGeneric (..))
 
 -- ============================================================================
 -- * Core Data Types
@@ -189,7 +190,7 @@ isProduct _           = False
 -- | Check if expression is a sum
 isSum :: Expression -> Bool
 isSum (Sum _) = True
-isSum _      = False
+isSum _       = False
 
 -- | Check if expression is a quotient
 isQuotient :: Expression -> Bool
@@ -209,7 +210,7 @@ isBinaryDifference _                      = False
 -- | Check if expression is a power
 isPower :: Expression -> Bool
 isPower (Power _ _) = True
-isPower _          = False
+isPower _           = False
 
 -- | Check if expression is a factorial
 isFactorial :: Expression -> Bool
@@ -383,13 +384,13 @@ pattern Atanh' x = Function "atanh" [x]
 -- ============================================================================
 getPowerBase :: Expression -> ExpressionResult Expression
 getPowerBase = \case
-  u@(Symbol _) -> ExpressionSuccess u
-  u@(Product _) -> ExpressionSuccess u
-  u@(Sum _) -> ExpressionSuccess u
-  u@(Factorial _) -> ExpressionSuccess u
-  u@(Function _ _) -> ExpressionSuccess u
+  u@(Symbol _) -> return u
+  u@(Product _) -> return u
+  u@(Sum _) -> return u
+  u@(Factorial _) -> return u
+  u@(Function _ _) -> return u
 
-  (Power b _) -> ExpressionSuccess b
+  (Power b _) -> return b
 
   Number _ -> ExpressionUndefined "Power base cannot be a number"
   Fraction _ _ -> ExpressionUndefined "Power base cannot be a fraction"
@@ -400,13 +401,13 @@ getPowerBase = \case
 
 getPowerExponent :: Expression -> ExpressionResult Expression
 getPowerExponent = \case
-  (Symbol _) -> ExpressionSuccess $ mkNumber 1
-  (Product _) -> ExpressionSuccess $ mkNumber 1
-  (Sum _) -> ExpressionSuccess $ mkNumber 1
-  (Factorial _) -> ExpressionSuccess $ mkNumber 1
-  (Function _ _) -> ExpressionSuccess $ mkNumber 1
+  (Symbol _) -> return $ mkNumber 1
+  (Product _) -> return $ mkNumber 1
+  (Sum _) -> return $ mkNumber 1
+  (Factorial _) -> return $ mkNumber 1
+  (Function _ _) -> return $ mkNumber 1
 
-  (Power _ e) -> ExpressionSuccess e
+  (Power _ e) -> return e
 
   (Number _) -> ExpressionUndefined "Power exponent cannot be a number"
   (Fraction _ _) -> ExpressionUndefined "Power exponent cannot be a fraction"
@@ -417,12 +418,12 @@ getPowerExponent = \case
 
 getTerm :: Expression -> ExpressionResult Expression
 getTerm = \case
-  u@(Symbol _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Sum _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Power _ _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Factorial _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Function _ _) -> ExpressionSuccess $ mkProduct [u]
-  u@(Product (x NE.:| xs)) -> ExpressionSuccess $ if isConstant x then mkProduct xs else u
+  u@(Symbol _) -> return $ mkProduct [u]
+  u@(Sum _) -> return $ mkProduct [u]
+  u@(Power _ _) -> return $ mkProduct [u]
+  u@(Factorial _) -> return $ mkProduct [u]
+  u@(Function _ _) -> return $ mkProduct [u]
+  u@(Product (x NE.:| xs)) -> return $ if isConstant x then mkProduct xs else u
 
   Number _ -> ExpressionUndefined "Cannot extract term from a number"
   Fraction _ _ -> ExpressionUndefined "Cannot extract term from a fraction"
@@ -434,12 +435,12 @@ getTerm = \case
 
 getConst :: Expression -> ExpressionResult Expression
 getConst = \case
-  Symbol _ -> ExpressionSuccess $ mkNumber 1
-  Sum _ -> ExpressionSuccess $ mkNumber 1
-  Power _ _ -> ExpressionSuccess $ mkNumber 1
-  Factorial _ -> ExpressionSuccess $ mkNumber 1
-  Function _ _ -> ExpressionSuccess $ mkNumber 1
-  Product (x NE.:| _) -> ExpressionSuccess $ if isConstant x then x else mkNumber 1
+  Symbol _ -> return $ mkNumber 1
+  Sum _ -> return $ mkNumber 1
+  Power _ _ -> return $ mkNumber 1
+  Factorial _ -> return $ mkNumber 1
+  Function _ _ -> return $ mkNumber 1
+  Product (x NE.:| _) -> return $ if isConstant x then x else mkNumber 1
 
   Number _ -> ExpressionUndefined "Cannot extract constant from a number"
   Fraction _ _ -> ExpressionUndefined "Cannot extract constant from a fraction"
@@ -491,6 +492,17 @@ toEither = \case
   ExpressionSuccess x -> Right x
   ExpressionError msg -> Left msg
   ExpressionUndefined msg -> Left msg
+
+getOperands :: Expression -> Operands
+getOperands (Product xs)           = xs
+getOperands (Sum xs)               = xs
+getOperands (Quotient n d)         = [n, d]
+getOperands (UnaryDifference x)    = [x]
+getOperands (BinaryDifference x y) = [x, y]
+getOperands (Power x y)            = [x, y]
+getOperands (Factorial x)          = [x]
+getOperands (Function _ args)      = args
+getOperands _                      = []
 
 -- ============================================================================
 -- * Canonical Ordering Instance
