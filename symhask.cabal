@@ -77,7 +77,6 @@ test-suite symhask-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      FactorialTests
       Paths_symhask
   autogen-modules:
       Paths_symhask
