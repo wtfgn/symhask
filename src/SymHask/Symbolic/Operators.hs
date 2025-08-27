@@ -1,63 +1,25 @@
+{-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE OverloadedLists #-}
 
 module SymHask.Symbolic.Operators
     (
     ) where
 
+import qualified Data.List.NonEmpty                                      as NE
 import           SymHask.Symbolic                                        (Expression (..),
                                                                           ExpressionResult (..),
                                                                           Operands,
+                                                                          getOperands,
                                                                           isAtomic,
-                                                                          toMaybe)
+                                                                          isProduct,
+                                                                          isSum)
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
-import qualified Data.List.NonEmpty                                     as NE
 
 
 
 -- ============================================================================
 -- * Structure-Based Operators
 -- ============================================================================
-
--- | Determines if an expression u is free of an expression t
--- (or does not contain t).
--- freeOf :: Expression -> Expression -> ExpressionResult Bool
--- freeOf u t
---   | u == t  = return False
---   | otherwise = do
---     simplified <- automaticSimplify u
-
---     case simplified of
---       -- atomic expressions
---       Number _ -> return True
---       Fraction _ _ -> return True
---       Symbol _ -> return True
-
---       -- compound expressions
---       Product xs -> allM (`freeOf` t) xs
---       Sum xs -> allM (`freeOf` t) xs
---       Quotient n d -> do
---         nFree <- freeOf n t
---         dFree <- freeOf d t
---         return (nFree && dFree)
---       Difference xs -> allM (`freeOf` t) xs
---       Power x y -> do
---         xFree <- freeOf x t
---         yFree <- freeOf y t
---         return (xFree && yFree)
---       Function _ args -> allM (`freeOf` t) args
---       Factorial x -> freeOf x t
---   where
---     allM :: (a -> ExpressionResult Bool) -> [a] -> ExpressionResult Bool
---     allM _ [] = return True
---     allM p (x : xs) = do
---       res <- p x
---       if res then allM p xs else return False
-    -- This function checks if all elements in the list satisfy the predicate
-    -- by recursively applying the predicate to each element.
-    -- If any element does not satisfy the predicate, it returns False immediately.
-    -- Otherwise, it returns True.
--- ============================================================================
-
 completeSubExpressions :: Expression -> ExpressionResult [Expression]
 completeSubExpressions u = do
   u' <- automaticSimplify u
@@ -101,27 +63,57 @@ completeSubExpressions u = do
       let subExprs = concat subExprsList
       return $ expr : subExprs
 
-freeOf :: Expression -> Expression -> ExpressionResult Bool
-freeOf u t = do
-  subExprs <- completeSubExpressions u
-  return $ t `notElem` subExprs
+freeOf :: Expression -> Expression -> Bool
+freeOf u t = case automaticSimplify u of
+  ExpressionSuccess u' -> if
+    | u' == t     -> False
+    | isAtomic u' -> True
+    | otherwise   -> all (`freeOf` t) (getOperands u')
+  _ -> False
 
--- Checks if an algebraic expression u has the form ax+b,
--- where a and b are free of x.
--- Return (a, b) if the form matches, Nothing otherwise.
--- linearForm
---   :: Expression
---   -> Expression
---   -> ExpressionResult (Maybe (Expression, Expression))
--- linearForm u x = do
---   u' <- automaticSimplify u
---   if
---     | u' == x -> return $ Just (1, 0)
---     | isAtomic u' -> return $ Just (0, u')
---     | otherwise -> case u' of
---       Product _ =
---       -- Sum terms -> do
---       --   let f = linearForm (head terms) x
---       --   case f of
---       --     Nothing -> return Nothing
---       --     Just (a, b) -> return $ Just (a + 1, b)
+-- ============================================================================
+-- * Linear Forms
+-- ============================================================================
+
+type LinearForm = (Expression, Expression) -- (a, b) in ax + b
+
+linearForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+linearForm u x = do
+  u' <- automaticSimplify u
+  analyzeLinearForm u' x
+
+
+analyzeLinearForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+analyzeLinearForm u' x
+  | u' == x = return $ Just (1, 0)
+  | isAtomic u' = return $ Just (0, u')
+  | isProduct u' = analyzeProductForm u' x
+  | isSum u' = analyzeSumForm u' x
+  | freeOf u' x = return $ Just (0, u')
+  | otherwise = return Nothing
+
+analyzeProductForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+analyzeProductForm u' x
+  | freeOf u' x = return $ Just (0, u')
+  | freeOf (u' / x) x = return $ Just (u' / x, 0)
+  | otherwise = return Nothing
+
+analyzeSumForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+analyzeSumForm u'@(Sum ts) x = do
+  let
+    firstTerm = NE.head ts
+    restExpr = u' - firstTerm
+
+  firstLinear <- linearForm firstTerm x
+  restLinear <- linearForm restExpr x
+  combineLinearForms firstLinear restLinear
+analyzeSumForm _ _ = ExpressionError "analyzeSumForm: not a sum"
+
+combineLinearForms
+  :: Maybe LinearForm -> Maybe LinearForm
+  -> ExpressionResult (Maybe LinearForm)
+combineLinearForms (Just (a1, b1)) (Just (a2, b2)) = do
+  a <- automaticSimplify (a1 + a2)
+  b <- automaticSimplify (b1 + b2)
+  return $ Just (a, b)
+combineLinearForms _ _ = return Nothing
