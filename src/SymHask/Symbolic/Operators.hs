@@ -7,8 +7,9 @@ module SymHask.Symbolic.Operators
     , linearForm
     ) where
 
-import           Control.Monad.Error.Class (throwError)
+import           Control.Monad.Error.Class                               (throwError)
 import qualified Data.List.NonEmpty                                      as NE
+import           Data.Text                                               (Text)
 import           SymHask.Symbolic                                        (Expression (..),
                                                                           ExpressionError (..),
                                                                           ExpressionResult,
@@ -81,43 +82,48 @@ freeOf u t = case automaticSimplify u of
 
 type LinearForm = (Expression, Expression) -- (a, b) in ax + b
 
-linearForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+linearForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 linearForm u x = do
   u' <- automaticSimplify u
-  analyzeLinearForm u' x
+  k <- analyzeLinearForm u' x
+  case k of
+    Just (a, b) -> do
+      a' <- automaticSimplify a
+      b' <- automaticSimplify b
+      return $ Just (a', b')
+    Nothing -> return Nothing
 
-
-analyzeLinearForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+analyzeLinearForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 analyzeLinearForm u' x
-  | u' == x = return $ Just (1, 0)
+  | u' == Symbol x = return $ Just (1, 0)
   | isAtomic u' = return $ Just (0, u')
   | isProduct u' = analyzeProductForm u' x
   | isSum u' = analyzeSumForm u' x
-  | freeOf u' x = return $ Just (0, u')
+  | freeOf u' (Symbol x) = return $ Just (0, u')
   | otherwise = return Nothing
 
-analyzeProductForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
-analyzeProductForm u' x
-  | freeOf u' x = return $ Just (0, u')
-  | freeOf (u' / x) x = return $ Just (u' / x, 0)
+analyzeProductForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
+analyzeProductForm u'@(Product _) x
+  | freeOf u' (Symbol x) = return $ Just (0, u')
+  | freeOf (u' / Symbol x) (Symbol x) = return $ Just (u' / Symbol x, 0)
   | otherwise = return Nothing
+analyzeProductForm u _ = throwError $
+  UnsupportedOperation "analyzeProductForm: not a product expression" u
 
-analyzeSumForm :: Expression -> Expression -> ExpressionResult (Maybe LinearForm)
+analyzeSumForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 analyzeSumForm u'@(Sum ts) x = do
   let
     firstTerm = NE.head ts
     restExpr = u' - firstTerm
-
   firstLinear <- linearForm firstTerm x
   restLinear <- linearForm restExpr x
   combineLinearForms firstLinear restLinear
-analyzeSumForm u _ = throwError $ UnsupportedOperation "analyzeSumForm: not a sum" u
+analyzeSumForm u _ = throwError $
+  UnsupportedOperation "analyzeSumForm: not a sum expression" u
 
 combineLinearForms
   :: Maybe LinearForm -> Maybe LinearForm
   -> ExpressionResult (Maybe LinearForm)
 combineLinearForms (Just (a1, b1)) (Just (a2, b2)) = do
-  a <- automaticSimplify (a1 + a2)
-  b <- automaticSimplify (b1 + b2)
-  return $ Just (a, b)
+  return $ Just (a1 + a2, b1 + b2)
 combineLinearForms _ _ = return Nothing
