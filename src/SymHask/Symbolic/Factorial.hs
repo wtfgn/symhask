@@ -1,10 +1,6 @@
 module SymHask.Symbolic.Factorial
     ( factorial
     ) where
-
-import           SymHask.Symbolic (ExpressionError (..), Expression (..), ExpressionResult)
-import Control.Monad.Error.Class (throwError)
-
 -- safeFactorial :: (Floating a, RealFrac a) => a -> Either (ExpressionError Expression) a
 -- safeFactorial n
 --   | n < 0 = throwError $ InvalidDomain "Factorial of negative number is undefined" n
