@@ -28,6 +28,7 @@ library
       SymHask
       SymHask.Numeric.Integers
       SymHask.Symbolic
+      SymHask.Symbolic.Differentiation
       SymHask.Symbolic.Evaluation
       SymHask.Symbolic.Factorial
       SymHask.Symbolic.Operators
@@ -48,8 +49,10 @@ library
       base >=4.7 && <5
     , containers >=0.6 && <0.8
     , deepseq >=1.4 && <1.6
+    , mtl ==2.3.1.*
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
+    , transformers
   default-language: Haskell2010
 
 executable symhask-exe
@@ -68,15 +71,18 @@ executable symhask-exe
       base >=4.7 && <5
     , containers >=0.6 && <0.8
     , deepseq >=1.4 && <1.6
+    , mtl ==2.3.1.*
     , symhask
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
+    , transformers
   default-language: Haskell2010
 
 test-suite symhask-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      FactorialTests
       Paths_symhask
   autogen-modules:
       Paths_symhask
@@ -90,7 +96,9 @@ test-suite symhask-test
       base >=4.7 && <5
     , containers >=0.6 && <0.8
     , deepseq >=1.4 && <1.6
+    , mtl ==2.3.1.*
     , symhask
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
+    , transformers
   default-language: Haskell2010

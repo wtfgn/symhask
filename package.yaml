@@ -29,6 +29,8 @@ dependencies:
 - deepseq >= 1.4 && < 1.6
 - text >= 2.0 && < 2.2
 - text-show >= 3.10 && < 3.12
+- mtl >= 2.3.1 && < 2.3.2
+- transformers
 
 ghc-options:
 - -Wall
