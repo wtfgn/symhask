@@ -2,12 +2,16 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module SymHask.Symbolic.Operators
-    (
+    ( completeSubExpressions
+    , freeOf
+    , linearForm
     ) where
 
+import           Control.Monad.Error.Class (throwError)
 import qualified Data.List.NonEmpty                                      as NE
 import           SymHask.Symbolic                                        (Expression (..),
-                                                                          ExpressionResult (..),
+                                                                          ExpressionError (..),
+                                                                          ExpressionResult,
                                                                           Operands,
                                                                           getOperands,
                                                                           isAtomic,
@@ -65,11 +69,11 @@ completeSubExpressions u = do
 
 freeOf :: Expression -> Expression -> Bool
 freeOf u t = case automaticSimplify u of
-  ExpressionSuccess u' -> if
+  Right u' -> if
     | u' == t     -> False
     | isAtomic u' -> True
     | otherwise   -> all (`freeOf` t) (getOperands u')
-  _ -> False
+  Left _ -> False
 
 -- ============================================================================
 -- * Linear Forms
@@ -107,7 +111,7 @@ analyzeSumForm u'@(Sum ts) x = do
   firstLinear <- linearForm firstTerm x
   restLinear <- linearForm restExpr x
   combineLinearForms firstLinear restLinear
-analyzeSumForm _ _ = ExpressionError "analyzeSumForm: not a sum"
+analyzeSumForm u _ = throwError $ UnsupportedOperation "analyzeSumForm: not a sum" u
 
 combineLinearForms
   :: Maybe LinearForm -> Maybe LinearForm

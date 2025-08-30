@@ -5,17 +5,19 @@ module SymHask.Symbolic.Simplification.AutomaticSimplification
     ( automaticSimplify
     ) where
 
+import           Control.Monad.Error.Class                      (throwError)
 import qualified Data.List.NonEmpty                             as NE
 import           SymHask.Symbolic                               (Expression (..),
-                                                                 ExpressionResult (..),
+                                                                 ExpressionError (..),
+                                                                 ExpressionResult,
                                                                  getConst,
                                                                  getPowerBase,
                                                                  getPowerExponent,
                                                                  getTerm,
                                                                  isConstant)
+import           SymHask.Symbolic.Factorial                     (factorial)
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                  simplifyRationalNumber)
-import           SymHask.Symbolic.Factorial                     (factorial)
 
 -- This module is intended to handle automatic simplification of symbolic expressions.
 -- ============================================================================
@@ -74,15 +76,17 @@ automaticSimplify = \case
 simplifyPower :: Expression -> ExpressionResult Expression
 simplifyPower = \case
   -- 0^w = 0, w is a positive integer or fraction
-  Power (Number 0) (Number y)
-    | y > 0 -> return $ Number 0
-    | otherwise -> ExpressionUndefined "0 raised to a non-positive power is undefined"
-  Power (Number 0) (Fraction n d)
-    | n > 0 && d > 0 -> return $ Number 0
-    | otherwise -> ExpressionUndefined "0 raised to a non-positive power is undefined"
+  u@(Power (Number 0) (Number y))
+    | y > 0 -> return 0
+    | otherwise -> throwError $
+      InvalidDomain "0 raised to a non-positive power is undefined" u
+  u@(Power (Number 0) (Fraction n d))
+    | n > 0 && d > 0 -> return 0
+    | otherwise -> throwError $
+      InvalidDomain "0 raised to a non-positive power is undefined" u
 
   -- 1^w = 1 for any w
-  Power (Number 1) _ -> return $ Number 1
+  Power (Number 1) _ -> return 1
 
   -- v^w = simplifyIntegerPower v w, where w is an integer
   Power v (Number w) -> simplifyIntegerPower v w
@@ -93,19 +97,17 @@ simplifyPower = \case
 simplifyIntegerPower :: Expression -> Integer -> ExpressionResult Expression
 simplifyIntegerPower v@(Number _) n = simplifyRNE $ Power v (Number n)
 simplifyIntegerPower v@(Fraction _ _) n = simplifyRNE $ Power v (Number n)
-simplifyIntegerPower _ 0 = return $ Number 1
+simplifyIntegerPower _ 0 = return 1
 simplifyIntegerPower v 1 = return v
 simplifyIntegerPower (Power r s) n =
   case simplifyProduct (Product [s, Number n]) of
-    ExpressionSuccess (Number p) -> simplifyIntegerPower r p
-    ExpressionSuccess p          -> return $ Power r p
-    ExpressionError err          -> ExpressionError err
-    ExpressionUndefined msg      -> ExpressionUndefined msg
+    Right (Number p) -> simplifyIntegerPower r p
+    Right p          -> return $ Power r p
+    Left err         -> Left err
 simplifyIntegerPower (Product xs) n =
   case traverse (`simplifyIntegerPower` n) xs of
-    ExpressionSuccess exprs -> simplifyProduct $ Product exprs
-    ExpressionError err     -> ExpressionError err
-    ExpressionUndefined msg -> ExpressionUndefined msg
+    Right exprs -> simplifyProduct $ Product exprs
+    Left err    -> Left err
 simplifyIntegerPower v n = return $ Power v (Number n)
 
 -- ============================================================================
@@ -115,14 +117,14 @@ simplifyProduct :: Expression -> ExpressionResult Expression
 simplifyProduct = \case
   Product [x] -> return x
   Product xs
-    | any isZero xs -> return $ Number 0
+    | any isZero xs -> return 0
     | otherwise -> do
       v <- simplifyProductStep $ NE.toList xs
       case v of
-        []  -> return $ Number 1
+        []  -> return 1
         [u] -> return u
         _   -> return $ Product $ NE.fromList v
-  _ -> ExpressionError "Expected a Product expression"
+  u -> throwError $ UnsupportedOperation "Expected a Product expression" u
   where
     isZero (Number 0) = True
     isZero _          = False
@@ -185,8 +187,10 @@ mergeProducts pss@(p : ps) qss@(q : qs) = do
       | u1 == q && u2 == p -> do
         rest <- mergeProducts pss qs
         return (q : rest)
-      | otherwise -> ExpressionError "Unexpected result from mergeProducts"
-    _ -> ExpressionError "Unexpected result from mergeProducts."
+      | otherwise -> throwError $
+        OtherError "Unexpected result from mergeProducts"
+    _ -> throwError $
+      OtherError "Unexpected result from mergeProducts."
 
 
 -- ============================================================================
@@ -198,10 +202,10 @@ simplifySum = \case
   Sum xs -> do
       v <- simplifySumStep $ NE.toList xs
       case v of
-        []  -> return $ Number 0
+        []  -> return 0
         [u] -> return u
         _   -> return $ Sum $ NE.fromList v
-  _ -> ExpressionError "Expected a Sum expression"
+  u -> throwError $ UnsupportedOperation "Expected a Sum expression" u
 
 simplifySumStep :: [Expression] -> ExpressionResult [Expression]
 -- length L < 2 does not apply
@@ -258,8 +262,8 @@ mergeSums pss@(p : ps) qss@(q : qs) = do
       | u1 == q && u2 == p -> do
         rest <- mergeSums pss qs
         return (q : rest)
-      | otherwise -> ExpressionError "Unexpected result from mergeSums"
-    _ -> ExpressionError "Unexpected result from mergeSums."
+      | otherwise -> throwError $ OtherError "Unexpected result from mergeSums"
+    _ -> throwError $ OtherError "Unexpected result from mergeSums."
 
 -- ============================================================================
 -- * Simplification of Quotients
@@ -269,7 +273,7 @@ simplifyQuotient = \case
   Quotient u v -> do
     v' <- simplifyPower $ Power v (Number (-1))
     simplifyProduct $ Product [u, v']
-  _ -> ExpressionError "Expected a Quotient expression"
+  u -> throwError $ UnsupportedOperation "Expected a Quotient expression" u
 
 -- ============================================================================
 -- * Simplification of Differences
@@ -280,19 +284,19 @@ simplifyDifference = \case
   BinaryDifference u v -> do
     v' <- simplifyProduct $ Product [Number (-1), v]
     simplifySum $ Sum [u, v']
-  _ -> ExpressionError "Expected a Difference expression."
+  u -> throwError $ UnsupportedOperation "Expected a Difference expression" u
 
 -- ============================================================================
 -- * Simplification of Factorial Expressions
 -- ============================================================================
 simplifyFactorial :: Expression -> ExpressionResult Expression
 simplifyFactorial = \case
-  Factorial (Number n)
-    | n < 0 -> ExpressionUndefined "Factorial of a negative number is undefined"
-    | n == 0 -> return $ Number 1
+  u@(Factorial (Number n))
+    | n < 0 -> throwError $ InvalidDomain "Factorial of a negative number is undefined" u
+    | n == 0 -> return 1
     | otherwise -> return $ Number $ factorial n
-  _ -> ExpressionError
-    "Expected a Factorial expression with a non-negative integer argument."
+  u -> throwError $ UnsupportedOperation
+    "Expected a Factorial expression with a non-negative integer argument." u
 
 -- ============================================================================
 -- * Simplification of Functions
@@ -300,4 +304,4 @@ simplifyFactorial = \case
 simplifyFunction :: Expression -> ExpressionResult Expression
 simplifyFunction = \case
   u@(Function _ _) -> return u
-  _ -> ExpressionError "Expected a Function expression."
+  u -> throwError $ UnsupportedOperation "Expected a Function expression." u

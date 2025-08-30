@@ -5,13 +5,15 @@ module SymHask.Symbolic.Evaluation
     ) where
 
 import           Control.Monad              (foldM)
+import           Control.Monad.Error.Class  (MonadError (throwError))
 import           Data.Ratio                 ((%))
 import           Data.Text                  (Text)
 import           SymHask.Symbolic           (Expression (..),
-                                             ExpressionResult (..),
+                                             ExpressionError (..),
+                                             ExpressionResult,
                                              getBinaryFunction,
                                              getUnaryFunction)
-import           SymHask.Symbolic.Factorial (safeFactorial)
+import           SymHask.Symbolic.Factorial (factorial)
 
 -- ============================================================================
 -- * Types and Type Aliases
@@ -32,13 +34,13 @@ toFunctionSafe
   -> (a -> ExpressionResult b)
 toFunctionSafe expr varMap = case expr of
   Number n ->
-    const . pure $ fromIntegral n
+    const . return $ fromIntegral n
 
   Fraction n d ->
-    const . pure $ fromRational (n % d)
+    const . return $ fromRational (n % d)
 
   Symbol s ->
-    pure . varMap s
+    return . varMap s
 
   Product xs ->
     \v -> foldM (\acc x -> (*) acc <$> toFunctionSafe x varMap v) 1 xs
@@ -58,20 +60,31 @@ toFunctionSafe expr varMap = case expr of
   Power x y ->
     \v -> (**) <$> toFunctionSafe x varMap v <*> toFunctionSafe y varMap v
 
-  Factorial x ->
+  u@(Factorial x) ->
     \v -> do
       xVal <- toFunctionSafe x varMap v
-      safeFactorial xVal
+      let
+        rounded = round xVal
+        tolerance = 1e-12  -- Small tolerance for floating-point comparison
+      -- Validate that the input is actually an integer
+      if abs (fromIntegral rounded - xVal) > tolerance
+        then throwError $ InvalidDomain "factorial requires integer input" u
+        else if rounded < 0
+          then throwError $ InvalidDomain "factorial of negative number" u
+        else return $ fromIntegral (factorial rounded)
 
-  e@(Function _ [x]) ->
-    case getUnaryFunction e of
+  u@(Function _ [x]) ->
+    case getUnaryFunction u of
       Just f -> fmap f . toFunctionSafe x varMap
-      Nothing -> const $ ExpressionError "Unknown unary function"
+      Nothing -> const $ throwError $
+        UnsupportedOperation "Unknown unary function" u
 
-  e@(Function _ [x, y]) ->
-    case getBinaryFunction e of
+  u@(Function _ [x, y]) ->
+    case getBinaryFunction u of
       Just f -> \v -> f <$> toFunctionSafe x varMap v <*> toFunctionSafe y varMap v
-      Nothing -> const $ ExpressionError "Unknown binary function"
+      Nothing -> const $ throwError $
+        UnsupportedOperation "Unknown binary function" u
 
-  Function _ _ ->
-    const $ ExpressionError "Unsupported function arity"
+  u@(Function _ _) ->
+    const $ throwError $
+      UnsupportedOperation "Unsupported function arity" u

@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass  #-}
-{-# LANGUAGE DeriveFunctor   #-}
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE DerivingVia     #-}
 {-# LANGUAGE InstanceSigs    #-}
@@ -9,7 +8,9 @@
 module SymHask.Symbolic
     ( -- * Core Data Types
       Expression (..)
-    , ExpressionResult (..)
+    , ExpressionError (..)
+      -- * Type Aliases
+    , ExpressionResult
     , Operands
       -- * Smart Constructors
     , mkBinaryDifference
@@ -44,10 +45,9 @@ module SymHask.Symbolic
     , getPowerExponent
     , getTerm
     , getUnaryFunction
-    , toEither
-    , toMaybe
       -- * Pattern Synonyms
     , isAtomic
+    , isSin
     , pattern (:**:)
     , pattern (:*:)
     , pattern (:+:)
@@ -74,15 +74,16 @@ module SymHask.Symbolic
     , pattern Tanh'
     ) where
 
-import           Control.DeepSeq    (NFData)
-import qualified Data.List.NonEmpty as NE
-import           Data.Ratio         (denominator, numerator)
-import           Data.String        (IsString, fromString)
-import           Data.Text          (Text)
-import           GHC.Generics       (Generic)
-import           Prelude            hiding ((^))
-import           TextShow           (TextShow)
-import           TextShow.Generic   (FromGeneric (..))
+import           Control.DeepSeq      (NFData)
+import          Control.Monad.Error.Class (throwError)
+import qualified Data.List.NonEmpty   as NE
+import           Data.Ratio           (denominator, numerator)
+import           Data.String          (IsString, fromString)
+import           Data.Text            (Text)
+import           GHC.Generics         (Generic)
+import           Prelude              hiding ((^))
+import           TextShow             (TextShow)
+import           TextShow.Generic     (FromGeneric (..))
 
 -- ============================================================================
 -- * Core Data Types
@@ -108,12 +109,35 @@ data Expression
   deriving (TextShow)
     via FromGeneric Expression
 
--- | Result type for expression operations
-data ExpressionResult a
-  = ExpressionSuccess a -- Successful result with an expression
-  | ExpressionUndefined Text -- Mathematical undefined case
-  | ExpressionError Text -- Programming/computation error
-  deriving (Eq, Functor, Show)
+data ExpressionError
+  -- Occurs when attempting to divide by zero, which is mathematically undefined.
+  = DivisionByZero Expression
+  -- Operation is applied outside its mathematical domain.
+  | InvalidDomain Text Expression
+  -- Numeric computation exceeds representable range.
+  | ArithmeticOverflow Expression
+
+  -- Function/operation called with wrong number of arguments.
+  | InvalidArity Text Integer Integer Expression -- operation/function name, expected, actual, problematic expression
+  -- Operation is not implemented or not supported for given operands.
+  | UnsupportedOperation Text Expression -- operation name, expression
+
+  -- Reference to a symbol/variable that hasn't been defined in current context.
+  -- e.g. x + 1 where x is not defined
+  | UndefinedSymbol Text -- symbol name
+  -- General evaluation failure that doesn't fit other categories.
+  | EvaluationFailure Text Expression -- reason, expression
+
+  -- Failed to parse input string into expression.
+  | ParseError Text Text -- error message, input
+
+  | OtherError Text -- unspecified error
+  deriving (Eq, Show)
+
+-- a: The type of the value causing the error
+-- b: The type of the successful result
+type ExpressionResult a
+  = Either ExpressionError a
 
 -- ============================================================================
 -- * Smart Constructors
@@ -221,6 +245,10 @@ isFactorial _             = False
 isFunction :: Expression -> Bool
 isFunction (Function _ _) = True
 isFunction _              = False
+
+isSin :: Expression -> Bool
+isSin (Sin' _) = True
+isSin _        = False
 
 -- | Check if expression is a constant (number or fraction)
 isConstant :: Expression -> Bool
@@ -332,24 +360,6 @@ instance Floating Expression where
   atanh x = mkFunction "atanh" [x]
 
 -- ============================================================================
--- * Result Type Instances
--- ============================================================================
-
-instance Applicative ExpressionResult where
-  pure = ExpressionSuccess
-  (ExpressionSuccess f) <*> (ExpressionSuccess x) = ExpressionSuccess (f x)
-  (ExpressionUndefined msg) <*> _                 = ExpressionUndefined msg
-  (ExpressionError msg) <*> _                     = ExpressionError msg
-  _ <*> (ExpressionUndefined msg)                 = ExpressionUndefined msg
-  _ <*> (ExpressionError msg)                     = ExpressionError msg
-
-instance Monad ExpressionResult where
-  return = pure
-  (ExpressionSuccess x) >>= f     = f x
-  (ExpressionUndefined msg) >>= _ = ExpressionUndefined msg
-  (ExpressionError msg) >>= _     = ExpressionError msg
-
--- ============================================================================
 -- * Pattern Synonyms
 -- ============================================================================
 pattern (:+:), (:*:), (:-:), (:/:), (:**:), LogBase' :: Expression -> Expression -> Expression
@@ -360,7 +370,10 @@ pattern x :/: y = Quotient x y
 pattern x :**: y = Power x y
 pattern LogBase' x y = Function "logBase" [x, y]
 
-pattern Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh' :: Expression -> Expression
+pattern
+  Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan',
+  Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh'
+  :: Expression -> Expression
 pattern Negate' x = Function "negate" [x]
 pattern Abs' x = Function "abs" [x]
 pattern Signum' x = Function "signum" [x]
@@ -392,29 +405,33 @@ getPowerBase = \case
 
   (Power b _) -> return b
 
-  Number _ -> ExpressionUndefined "Power base cannot be a number"
-  Fraction _ _ -> ExpressionUndefined "Power base cannot be a fraction"
+  u@(Number _) -> throwError $
+    UnsupportedOperation "Power base cannot be a number" u
+  u@(Fraction _ _) -> throwError $
+    UnsupportedOperation "Power base cannot be a fraction" u
 
-  _ -> ExpressionError
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for power base extraction, only \
-    \a symbol, product, sum, factorial or function is expected."
+    \a symbol, product, sum, factorial or function is expected." u
 
 getPowerExponent :: Expression -> ExpressionResult Expression
 getPowerExponent = \case
-  (Symbol _) -> return $ mkNumber 1
-  (Product _) -> return $ mkNumber 1
-  (Sum _) -> return $ mkNumber 1
-  (Factorial _) -> return $ mkNumber 1
-  (Function _ _) -> return $ mkNumber 1
+  (Symbol _) -> return 1
+  (Product _) -> return 1
+  (Sum _) -> return 1
+  (Factorial _) -> return 1
+  (Function _ _) -> return 1
 
   (Power _ e) -> return e
 
-  (Number _) -> ExpressionUndefined "Power exponent cannot be a number"
-  (Fraction _ _) -> ExpressionUndefined "Power exponent cannot be a fraction"
+  u@(Number _) -> throwError $
+    UnsupportedOperation "Power exponent cannot be a number" u
+  u@(Fraction _ _) -> throwError $
+    UnsupportedOperation "Power exponent cannot be a fraction" u
 
-  _ -> ExpressionError
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for power exponent extraction, only \
-    \a symbol, product, sum, factorial or function is expected."
+    \a symbol, product, sum, factorial or function is expected." u
 
 getTerm :: Expression -> ExpressionResult Expression
 getTerm = \case
@@ -425,30 +442,34 @@ getTerm = \case
   u@(Function _ _) -> return $ mkProduct [u]
   u@(Product (x NE.:| xs)) -> return $ if isConstant x then mkProduct xs else u
 
-  Number _ -> ExpressionUndefined "Cannot extract term from a number"
-  Fraction _ _ -> ExpressionUndefined "Cannot extract term from a fraction"
+  u@(Number _) -> throwError $
+    UnsupportedOperation "Cannot extract term from a number" u
+  u@(Fraction _ _) -> throwError $
+    UnsupportedOperation "Cannot extract term from a fraction" u
 
-  _ -> ExpressionError
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for term extraction, only \
     \a number, fraction, symbol, product, sum, difference, quotient, \
-    \power, factorial or function is expected."
+    \power, factorial or function is expected." u
 
 getConst :: Expression -> ExpressionResult Expression
 getConst = \case
-  Symbol _ -> return $ mkNumber 1
-  Sum _ -> return $ mkNumber 1
-  Power _ _ -> return $ mkNumber 1
-  Factorial _ -> return $ mkNumber 1
-  Function _ _ -> return $ mkNumber 1
-  Product (x NE.:| _) -> return $ if isConstant x then x else mkNumber 1
+  Symbol _ -> return 1
+  Sum _ -> return 1
+  Power _ _ -> return 1
+  Factorial _ -> return 1
+  Function _ _ -> return 1
+  Product (x NE.:| _) -> return $ if isConstant x then x else 1
 
-  Number _ -> ExpressionUndefined "Cannot extract constant from a number"
-  Fraction _ _ -> ExpressionUndefined "Cannot extract constant from a fraction"
+  u@(Number _) -> throwError $
+    UnsupportedOperation "Cannot extract constant from a number" u
+  u@(Fraction _ _) -> throwError $
+    UnsupportedOperation "Cannot extract constant from a fraction" u
 
-  _ -> ExpressionError
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for constant extraction, only \
     \a number, fraction, symbol, product, sum, difference, quotient, \
-    \power, factorial or function is expected."
+    \power, factorial or function is expected." u
 
 getUnaryFunction :: (Floating a) => Expression -> Maybe (a -> a)
 getUnaryFunction = \case
@@ -480,18 +501,6 @@ getBinaryFunction = \case
   _ :/: _ -> Just (/)
   _ :**: _ -> Just (**)
   _       -> Nothing
-
-toMaybe :: ExpressionResult a -> Maybe a
-toMaybe = \case
-  ExpressionSuccess x -> Just x
-  ExpressionError _   -> Nothing
-  ExpressionUndefined _ -> Nothing
-
-toEither :: ExpressionResult a -> Either Text a
-toEither = \case
-  ExpressionSuccess x -> Right x
-  ExpressionError msg -> Left msg
-  ExpressionUndefined msg -> Left msg
 
 getOperands :: Expression -> Operands
 getOperands (Product xs)           = xs
@@ -538,8 +547,8 @@ instance Ord Expression where
         EQ    -> return $ compare e1 e2
         other -> return other
     of
-      ExpressionSuccess ord -> ord
-      _                     -> EQ -- Fallback if extraction fails
+      Right ord -> ord
+      Left _    -> EQ -- Fallback if extraction fails
 
   -- Compare factorials
   compare (Factorial x) (Factorial y) = compare x y

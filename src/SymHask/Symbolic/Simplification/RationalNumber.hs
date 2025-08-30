@@ -6,8 +6,9 @@ module SymHask.Symbolic.Simplification.RationalNumber
     , simplifyRationalNumber
     ) where
 
-import           SymHask.Symbolic (Expression (..), ExpressionResult (..),
-                                   mkFraction)
+import           SymHask.Symbolic (Expression (..), ExpressionError (..),
+                                   ExpressionResult, mkFraction)
+import Control.Monad.Error.Class (throwError)
 
 -- This module is intended to handle simplification of rational numbers
 -- and related operations on symbolic expressions involving rational numbers.
@@ -18,22 +19,22 @@ import           SymHask.Symbolic (Expression (..), ExpressionResult (..),
 
 simplifyRationalNumber :: Expression -> ExpressionResult Expression
 simplifyRationalNumber = \case
-  u@(Number _) -> ExpressionSuccess u
+  u@(Number _) -> return u
 
-  Fraction n d
-    | d == 0 -> ExpressionUndefined "Division by zero"
-    | n == 0 -> ExpressionSuccess (Number 0)
-    | n `mod` d == 0 -> ExpressionSuccess (Number (n `div` d))
+  u@(Fraction n d)
+    | d == 0 -> throwError $ DivisionByZero u
+    | n == 0 -> return 0
+    | n `mod` d == 0 -> return (Number (n `div` d))
     | otherwise ->
       let
         g = gcd n d
         n' = if d > 0 then n `div` g else (-n) `div` g
         d' = if d > 0 then d `div` g else (-d) `div` g
-      in ExpressionSuccess (Fraction n' d')
-  _ -> ExpressionError
+      in return (Fraction n' d')
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for rational simplification, only \
     \a fraction in function (FracOp) notation (with non-zero denominator) \
-    \or an integer is expected."
+    \or an integer is expected." u
 
 simplifyRNE :: Expression -> ExpressionResult Expression
 simplifyRNE expr = do
@@ -42,10 +43,10 @@ simplifyRNE expr = do
 
 simplifyStep :: Expression -> ExpressionResult Expression
 simplifyStep = \case
-  u@(Number _) -> ExpressionSuccess u
+  u@(Number _) -> return u
 
   u@(Fraction _ d)
-    | d == 0 -> ExpressionUndefined "Division by zero"
+    | d == 0 -> throwError $ DivisionByZero u
     | otherwise -> simplifyRationalNumber u
 
   Sum [x] -> simplifyStep x
@@ -80,9 +81,9 @@ simplifyStep = \case
     x' <- simplifyStep x
     evaluatePower x' n
 
-  _ -> ExpressionError
+  u -> throwError $ UnsupportedOperation
     "Unsupported expression type for simplification, \
-    \only RNE is expected."
+    \only RNE is expected." u
 
 
 -- ============================================================================
@@ -98,7 +99,7 @@ evaluateSum v w = do
   let commonDenominator = dv * dw
       newNumerator = nv * dw + nw * dv
 
-  ExpressionSuccess (Fraction newNumerator commonDenominator)
+  return $ Fraction newNumerator commonDenominator
 
 evaluateDifference :: Expression -> Expression -> ExpressionResult Expression
 evaluateDifference v w = do
@@ -110,7 +111,7 @@ evaluateDifference v w = do
   let commonDenominator = dv * dw
       newNumerator = nv * dw - nw * dv
 
-  ExpressionSuccess (Fraction newNumerator commonDenominator)
+  return $ Fraction newNumerator commonDenominator
 
 evaluateProduct :: Expression -> Expression -> ExpressionResult Expression
 evaluateProduct v w = do
@@ -122,7 +123,7 @@ evaluateProduct v w = do
   let newNumerator = nv * nw
       newDenominator = dv * dw
 
-  ExpressionSuccess (Fraction newNumerator newDenominator)
+  return $ Fraction newNumerator newDenominator
 
 evaluateQuotient :: Expression -> Expression -> ExpressionResult Expression
 evaluateQuotient v w = do
@@ -132,24 +133,25 @@ evaluateQuotient v w = do
   dw <- safeGetDenominator w
 
   if nw == 0
-    then ExpressionUndefined "Division by zero"
+    then throwError $ DivisionByZero w
     else let newNumerator = nv * dw
              newDenominator = dv * nw
-         in ExpressionSuccess (Fraction newNumerator newDenominator)
+         in return $ Fraction newNumerator newDenominator
 
 evaluatePower :: Expression -> Integer -> ExpressionResult Expression
 evaluatePower v n = do
+  let u = Power v (Number n)
   vn <- safeGetNumerator v
   vd <- safeGetDenominator v
 
   if
-    | vn == 0 && n >= 1 -> ExpressionSuccess (Number 0)
-    | vn == 0 && n <= 0 -> ExpressionUndefined "Zero to non-positive power"
+    | vn == 0 && n >= 1 -> return 0
+    | vn == 0 && n <= 0 -> throwError $ InvalidDomain "Zero to non-positive power" u
     | n > 0             -> evaluatePower v (n - 1) >>= \s -> evaluateProduct s v
-    | n == 0            -> ExpressionSuccess (Number 1)
-    | n == -1           -> ExpressionSuccess (mkFraction vd vn)
+    | n == 0            -> return 1
+    | n == -1           -> return $ mkFraction vd vn
     | n < -1            -> evaluatePower (mkFraction vd vn) (-n)
-    | otherwise         -> ExpressionError "Invalid power operation"
+    | otherwise         -> throwError $ EvaluationFailure "Invalid power operation" u
 
 -- ============================================================================
 -- * Accessor Functions
@@ -172,13 +174,15 @@ getDenominator _              = Nothing
 safeGetNumerator :: Expression -> ExpressionResult Integer
 safeGetNumerator expr =
   case getNumerator expr of
-    Just n -> ExpressionSuccess n
-    Nothing -> ExpressionError "Cannot extract numerator from non-numeric expression"
+    Just n -> return n
+    Nothing -> throwError $
+      UnsupportedOperation "Cannot extract numerator from non-numeric expression" expr
 
 safeGetDenominator :: Expression -> ExpressionResult Integer
 safeGetDenominator expr =
   case getDenominator expr of
     Just d -> if d == 0
-              then ExpressionUndefined "Denominator is zero"
-              else ExpressionSuccess d
-    Nothing -> ExpressionError "Cannot extract denominator from non-numeric expression"
+              then throwError $ DivisionByZero expr
+              else return d
+    Nothing -> throwError $
+      UnsupportedOperation "Cannot extract denominator from non-numeric expression" expr
