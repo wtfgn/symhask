@@ -13,7 +13,7 @@ import           SymHask.Symbolic           (Expression (..),
                                              ExpressionResult,
                                              getBinaryFunction,
                                              getUnaryFunction)
-import           SymHask.Symbolic.Factorial (factorial)
+import           SymHask.Numeric.Factorial (factorial)
 
 -- ============================================================================
 -- * Types and Type Aliases

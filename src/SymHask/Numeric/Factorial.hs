@@ -1,4 +1,4 @@
-module SymHask.Symbolic.Factorial
+module SymHask.Numeric.Factorial
     ( factorial
     ) where
 -- safeFactorial :: (Floating a, RealFrac a) => a -> Either (ExpressionError Expression) a

@@ -26,11 +26,11 @@ source-repository head
 library
   exposed-modules:
       SymHask
+      SymHask.Numeric.Factorial
       SymHask.Numeric.Integers
       SymHask.Symbolic
       SymHask.Symbolic.Differentiation
       SymHask.Symbolic.Evaluation
-      SymHask.Symbolic.Factorial
       SymHask.Symbolic.Operators
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
