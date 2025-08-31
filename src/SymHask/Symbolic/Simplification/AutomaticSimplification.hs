@@ -15,7 +15,7 @@ import           SymHask.Symbolic                               (Expression (..)
                                                                  getPowerExponent,
                                                                  getTerm,
                                                                  isConstant)
-import           SymHask.Symbolic.Factorial                     (factorial)
+import           SymHask.Numeric.Factorial                     (factorial)
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                  simplifyRationalNumber)
 
