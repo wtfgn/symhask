@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternSynonyms #-}
 
+
 module SymHask.Symbolic
     ( -- * Core Data Types
       Expression (..)
@@ -62,10 +63,13 @@ module SymHask.Symbolic
     , pattern Atanh'
     , pattern Cos'
     , pattern Cosh'
+    , pattern Cot'
+    , pattern Csc'
     , pattern Exp'
     , pattern Log'
     , pattern LogBase'
     , pattern Negate'
+    , pattern Sec'
     , pattern Signum'
     , pattern Sin'
     , pattern Sinh'
@@ -74,16 +78,16 @@ module SymHask.Symbolic
     , pattern Tanh'
     ) where
 
-import           Control.DeepSeq      (NFData)
-import          Control.Monad.Error.Class (throwError)
-import qualified Data.List.NonEmpty   as NE
-import           Data.Ratio           (denominator, numerator)
-import           Data.String          (IsString, fromString)
-import           Data.Text            (Text)
-import           GHC.Generics         (Generic)
-import           Prelude              hiding ((^))
-import           TextShow             (TextShow)
-import           TextShow.Generic     (FromGeneric (..))
+import           Control.DeepSeq           (NFData)
+import           Control.Monad.Error.Class (throwError)
+import qualified Data.List.NonEmpty        as NE
+import           Data.Ratio                (denominator, numerator)
+import           Data.String               (IsString, fromString)
+import           Data.Text                 (Text)
+import           GHC.Generics              (Generic)
+import           Prelude                   hiding ((^))
+import           TextShow                  (TextShow)
+import           TextShow.Generic          (FromGeneric (..))
 
 -- ============================================================================
 -- * Core Data Types
@@ -105,6 +109,8 @@ data Expression
   | Power Expression Expression -- Exponentiation: a ^ b
   | Factorial Expression -- Factorial: n!
   | Function Text Operands -- Function application: f(x, y, ...)
+  -- | Structural equality, not semantic equality.
+  -- E.g., @"a" - "a" /= 0@.
   deriving (Eq, Generic, NFData, Read, Show)
   deriving (TextShow)
     via FromGeneric Expression
@@ -116,21 +122,17 @@ data ExpressionError
   | InvalidDomain Text Expression
   -- Numeric computation exceeds representable range.
   | ArithmeticOverflow Expression
-
   -- Function/operation called with wrong number of arguments.
   | InvalidArity Text Integer Integer Expression -- operation/function name, expected, actual, problematic expression
   -- Operation is not implemented or not supported for given operands.
   | UnsupportedOperation Text Expression -- operation name, expression
-
   -- Reference to a symbol/variable that hasn't been defined in current context.
   -- e.g. x + 1 where x is not defined
   | UndefinedSymbol Text -- symbol name
   -- General evaluation failure that doesn't fit other categories.
   | EvaluationFailure Text Expression -- reason, expression
-
   -- Failed to parse input string into expression.
   | ParseError Text Text -- error message, input
-
   | OtherError Text -- unspecified error
   deriving (Eq, Show)
 
@@ -371,7 +373,7 @@ pattern x :**: y = Power x y
 pattern LogBase' x y = Function "logBase" [x, y]
 
 pattern
-  Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan',
+  Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Cot', Sec', Csc',
   Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh'
   :: Expression -> Expression
 pattern Negate' x = Function "negate" [x]
@@ -383,6 +385,9 @@ pattern Sqrt' x = Function "sqrt" [x]
 pattern Sin' x = Function "sin" [x]
 pattern Cos' x = Function "cos" [x]
 pattern Tan' x = Function "tan" [x]
+pattern Cot' x = Function "cot" [x]
+pattern Sec' x = Function "sec" [x]
+pattern Csc' x = Function "csc" [x]
 pattern Asin' x = Function "asin" [x]
 pattern Acos' x = Function "acos" [x]
 pattern Atan' x = Function "atan" [x]
@@ -525,16 +530,16 @@ instance Ord Expression where
   compare (Number n1) (Number n2) = compare n1 n2
   compare (Fraction n1 d1) (Fraction n2 d2) = compare (n1 * d2) (n2 * d1)
   compare (Number x) (Fraction n d) = compare (x * d) n
-  compare (Fraction n d) (Number x) = compare n (x * d)
 
   -- Compare symbols (lexicographically)
   compare (Symbol s1) (Symbol s2) = compare s1 s2
 
-  -- Compare products and sums by their operands
+  -- Compare products and sums by their operands [u_1, ..., u_m] and [v_1, ..., v_n]
+  -- start comparing with the most significant operand u_m and v_n
   compare (Product xs1) (Product xs2) =
-    compareOperandList (NE.reverse xs1) (NE.reverse xs2)
+    compare (NE.reverse xs1) (NE.reverse xs2)
   compare (Sum xs1) (Sum xs2) =
-    compareOperandList (NE.reverse xs1) (NE.reverse xs2)
+    compare (NE.reverse xs1) (NE.reverse xs2)
 
   -- Compare powers by base and exponent
   compare u@(Power _ _) v@(Power _ _) =
@@ -554,9 +559,10 @@ instance Ord Expression where
   compare (Factorial x) (Factorial y) = compare x y
 
   -- Compare functions by name and arguments
+  -- The most significant arguments for functions are thre first operands
   compare (Function f1 args1) (Function f2 args2) =
     case compare f1 f2 of
-      EQ    -> compareOperandList args1 args2
+      EQ    -> compare args1 args2
       other -> other
 
   -- Compare when one is an integer or fraction and the other is any other type
@@ -602,8 +608,3 @@ instance Ord Expression where
     EQ -> EQ
     LT -> GT
     GT -> LT
-
-compareOperandList :: Operands -> Operands -> Ordering
-compareOperandList xs1 xs2 = compare (NE.toList xs1) (NE.toList xs2)
-
-
