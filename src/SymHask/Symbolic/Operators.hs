@@ -20,8 +20,6 @@ import           SymHask.Symbolic                                        (Expres
                                                                           isSum)
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
 
-
-
 -- ============================================================================
 -- * Structure-Based Operators
 -- ============================================================================
@@ -69,12 +67,13 @@ completeSubExpressions u = do
       return $ expr : subExprs
 
 freeOf :: Expression -> Expression -> Bool
-freeOf u t = case automaticSimplify u of
-  Right u' -> if
-    | u' == t     -> False
-    | isAtomic u' -> True
-    | otherwise   -> all (`freeOf` t) (getOperands u')
-  Left _ -> False
+freeOf u t = 
+  case (automaticSimplify u, automaticSimplify t) of
+    (Right u', Right t') -> 
+      if | u' == t'    -> False
+         | isAtomic u' -> True
+         | otherwise   -> all (`freeOf` t') (getOperands u')
+    _ -> False  -- If simplification fails, assume not free
 
 -- ============================================================================
 -- * Linear Forms
@@ -93,6 +92,7 @@ linearForm u x = do
       return $ Just (a', b')
     Nothing -> return Nothing
 
+-- Assume u is already simplified
 analyzeLinearForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 analyzeLinearForm u' x
   | u' == Symbol x = return $ Just (1, 0)
@@ -102,6 +102,7 @@ analyzeLinearForm u' x
   | freeOf u' (Symbol x) = return $ Just (0, u')
   | otherwise = return Nothing
 
+-- Assume u is already simplified
 analyzeProductForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 analyzeProductForm u'@(Product _) x
   | freeOf u' (Symbol x) = return $ Just (0, u')
@@ -110,6 +111,7 @@ analyzeProductForm u'@(Product _) x
 analyzeProductForm u _ = throwError $
   UnsupportedOperation "analyzeProductForm: not a product expression" u
 
+-- Assume u is already simplified
 analyzeSumForm :: Expression -> Text -> ExpressionResult (Maybe LinearForm)
 analyzeSumForm u'@(Sum ts) x = do
   let
