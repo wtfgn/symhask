@@ -31,6 +31,7 @@ differentiate u x = do
   d <- applyDifferentiationRule u' x
   automaticSimplify d
 
+-- Assume u' is already simplified
 applyDifferentiationRule :: Expression -> Text -> ExpressionResult Expression
 applyDifferentiationRule u' x
   | u' == Symbol x = return 1
@@ -41,6 +42,7 @@ applyDifferentiationRule u' x
   | freeOf u' (Symbol x) = return 0
   | otherwise = return $ UnevaluatedD u' x
 
+-- Assume u' = (Power v w) is already simplified
 differentiatePower :: Expression -> Text -> ExpressionResult Expression
 differentiatePower (Power v w) x = do
   dv <- differentiate v x
@@ -49,6 +51,7 @@ differentiatePower (Power v w) x = do
 differentiatePower u' _ = throwError $
   UnsupportedOperation "differentiatePower: not a power expression" u'
 
+-- Assume u' = (Sum v w) is already simplified
 differentiateSum :: Expression -> Text -> ExpressionResult Expression
 differentiateSum u'@(Sum terms) x = do
   let v = NE.head terms
@@ -59,6 +62,7 @@ differentiateSum u'@(Sum terms) x = do
 differentiateSum u' _ = throwError $
   UnsupportedOperation "differentiateSum: not a sum expression" u'
 
+-- Assume u' = (Product v w) is already simplified
 differentiateProduct :: Expression -> Text -> ExpressionResult Expression
 differentiateProduct u'@(Product factors) x = do
   let v = NE.head factors
@@ -69,6 +73,7 @@ differentiateProduct u'@(Product factors) x = do
 differentiateProduct u' _ = throwError $
   UnsupportedOperation "differentiateProduct: not a product expression" u'
 
+-- Assume u' = (Sin v) is already simplified
 differentiateSin :: Expression -> Text -> ExpressionResult Expression
 differentiateSin (Sin' v) x = do
   dv <- differentiate v x
