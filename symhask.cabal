@@ -32,9 +32,11 @@ library
       SymHask.Symbolic.Differentiation
       SymHask.Symbolic.Evaluation
       SymHask.Symbolic.Operators
+      SymHask.Symbolic.SemanticEquality
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
       SymHask.Symbolic.Simplification.RationalNumber
+      SymHask.Symbolic.Trigonometry
   other-modules:
       Paths_symhask
   autogen-modules:
