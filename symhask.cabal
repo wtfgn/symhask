@@ -31,6 +31,7 @@ library
       SymHask.Symbolic
       SymHask.Symbolic.Differentiation
       SymHask.Symbolic.Evaluation
+      SymHask.Symbolic.Haskell
       SymHask.Symbolic.Operators
       SymHask.Symbolic.SemanticEquality
       SymHask.Symbolic.Simplification
