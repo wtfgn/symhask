@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-
 module SymHask.Symbolic
     ( -- * Core Data Types
       Expression (..)
@@ -65,10 +64,12 @@ module SymHask.Symbolic
     , pattern Cosh'
     , pattern Cot'
     , pattern Csc'
+    , pattern E'
     , pattern Exp'
     , pattern Log'
     , pattern LogBase'
     , pattern Negate'
+    , pattern Pi'
     , pattern Sec'
     , pattern Signum'
     , pattern Sin'
@@ -364,6 +365,10 @@ instance Floating Expression where
 -- ============================================================================
 -- * Pattern Synonyms
 -- ============================================================================
+pattern Pi', E' :: Expression
+pattern Pi' = Symbol "pi"
+pattern E' = Symbol "e"
+
 pattern (:+:), (:*:), (:-:), (:/:), (:**:), LogBase' :: Expression -> Expression -> Expression
 pattern x :+: y = Sum [x, y]
 pattern x :*: y = Product [x, y]
@@ -505,7 +510,7 @@ getBinaryFunction = \case
   _ :*: _ -> Just (*)
   _ :/: _ -> Just (/)
   _ :**: _ -> Just (**)
-  _       -> Nothing
+  _ -> Nothing
 
 getOperands :: Expression -> Operands
 getOperands (Product xs)           = xs
