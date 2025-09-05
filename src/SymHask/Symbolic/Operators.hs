@@ -1,14 +1,24 @@
 {-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module SymHask.Symbolic.Operators
-    ( completeSubExpressions
+    ( allFreeOf
+    , completeSubExpressions
+    , containParameters
     , freeOf
+    , getAllSymbols
     , linearForm
+    , trigFreeOf
+    , isNumerical
+    , treeSize
+    , substitute
     ) where
 
 import           Control.Monad.Error.Class                               (throwError)
 import qualified Data.List.NonEmpty                                      as NE
+import qualified Data.Set                                                as Set
+
 import           Data.Text                                               (Text)
 import           SymHask.Symbolic                                        (Expression (..),
                                                                           ExpressionError (..),
@@ -17,63 +27,96 @@ import           SymHask.Symbolic                                        (Expres
                                                                           getOperands,
                                                                           isAtomic,
                                                                           isProduct,
-                                                                          isSum)
+                                                                          isSum,
+                                                                          pattern Cos',
+                                                                          pattern Cot',
+                                                                          pattern Csc',
+                                                                          pattern E',
+                                                                          pattern Pi',
+                                                                          pattern Sec',
+                                                                          pattern Sin',
+                                                                          pattern Tan')
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
 
 -- ============================================================================
 -- * Structure-Based Operators
 -- ============================================================================
-completeSubExpressions :: Expression -> ExpressionResult [Expression]
+completeSubExpressions :: Expression -> ExpressionResult (Set.Set Expression)
 completeSubExpressions u = do
   u' <- automaticSimplify u
   case u' of
     -- atomic expressions
-    Number _ -> return [u']
-    Fraction _ _ -> return [u']
-    Symbol _ -> return [u']
+    Number _ -> return $ Set.singleton u'
+    Fraction _ _ -> return $ Set.singleton u'
+    Symbol _ -> return $ Set.singleton u'
 
     -- compound expressions
     Product xs  -> gatherSubExpressions u' xs
-
     Sum xs      -> gatherSubExpressions u' xs
 
     Quotient n d -> do
       nSub <- completeSubExpressions n
       dSub <- completeSubExpressions d
-      return $ u' : nSub ++ dSub
+      return $ Set.insert u' (Set.union nSub dSub)
 
     UnaryDifference x -> do
       xSub <- completeSubExpressions x
-      return $ u' : xSub
+      return $ Set.insert u' xSub
 
     BinaryDifference x y -> do
       xSub <- completeSubExpressions x
       ySub <- completeSubExpressions y
-      return $ u' : xSub ++ ySub
+      return $ Set.insert u' (Set.union xSub ySub)
 
     Power x y     -> do
       xSub <- completeSubExpressions x
       ySub <- completeSubExpressions y
-      return $ u' : xSub ++ ySub
+      return $ Set.insert u' (Set.union xSub ySub)
 
     Factorial x     -> gatherSubExpressions u' [x]
-
     Function _ args -> gatherSubExpressions u' args
   where
-    gatherSubExpressions :: Expression -> Operands -> ExpressionResult [Expression]
+    gatherSubExpressions :: Expression -> Operands -> ExpressionResult (Set.Set Expression)
     gatherSubExpressions expr parts = do
       subExprsList <- mapM completeSubExpressions parts
-      let subExprs = concat subExprsList
-      return $ expr : subExprs
+      let subExprs = Set.unions subExprsList
+      return $ Set.insert expr subExprs
 
 freeOf :: Expression -> Expression -> Bool
-freeOf u t = 
+freeOf u t =
   case (automaticSimplify u, automaticSimplify t) of
-    (Right u', Right t') -> 
-      if | u' == t'    -> False
-         | isAtomic u' -> True
-         | otherwise   -> all (`freeOf` t') (getOperands u')
+    (Right u', Right t') -> if
+      | u' == t'    -> False
+      | isAtomic u' -> True
+      | otherwise   -> all (`freeOf` t') (getOperands u')
     _ -> False  -- If simplification fails, assume not free
+
+-- determines if u is free of all expressions in a set (or list) S
+-- u and elements in s will be simplified in freeOf
+allFreeOf :: (Foldable f) => Expression -> f Expression -> Bool
+allFreeOf u = all (`freeOf` u)
+
+-- returns true if an algebraic expression u
+-- is free of trigonometric functions (sin, cos, tan, cot, sec, csc)
+-- and false otherwise.
+trigFreeOf :: Expression -> Bool
+trigFreeOf u =
+  case automaticSimplify u of
+    Right u' -> if
+      | isTrigFunction u' -> False
+      | isAtomic u'       -> True
+      | otherwise         -> all trigFreeOf (getOperands u')
+    Left _ -> False  -- If simplification fails, assume not free
+  where
+    isTrigFunction :: Expression -> Bool
+    isTrigFunction = \case
+      Sin' _ -> True
+      Cos' _ -> True
+      Tan' _ -> True
+      Cot' _ -> True
+      Sec' _ -> True
+      Csc' _ -> True
+      _      -> False
 
 -- ============================================================================
 -- * Linear Forms
@@ -129,3 +172,169 @@ combineLinearForms
 combineLinearForms (Just (a1, b1)) (Just (a2, b2)) = do
   return $ Just (a1 + a2, b1 + b2)
 combineLinearForms _ _ = return Nothing
+
+-- ============================================================================
+-- Symbols
+-- ============================================================================
+
+-- Returns a set of symbols in u
+getAllSymbols :: Expression -> ExpressionResult (Set.Set Text)
+getAllSymbols u = do
+  u' <- automaticSimplify u
+  case u' of
+    Number _ -> return Set.empty
+    Fraction _ _ -> return Set.empty
+    Symbol s -> return $ Set.singleton s
+
+    Product xs -> gatherSymbols xs
+    Sum xs -> gatherSymbols xs
+
+    Quotient n d -> do
+      nSym <- getAllSymbols n
+      dSym <- getAllSymbols d
+      return $ Set.union nSym dSym
+
+    UnaryDifference x -> getAllSymbols x
+    BinaryDifference x y -> do
+      xSym <- getAllSymbols x
+      ySym <- getAllSymbols y
+      return $ Set.union xSym ySym
+
+    Power x y -> do
+      xSym <- getAllSymbols x
+      ySym <- getAllSymbols y
+      return $ Set.union xSym ySym
+
+    Factorial x -> getAllSymbols x
+    Function _ args -> gatherSymbols args
+  where
+    gatherSymbols :: Operands -> ExpressionResult (Set.Set Text)
+    gatherSymbols parts = do
+      symList <- mapM getAllSymbols parts
+      return $ Set.unions symList
+
+-- ============================================================================
+-- * Contain_parameters
+-- ============================================================================
+
+-- returns true if the algebraic expression u contains any symbols other
+-- than the symbol x and false otherwise.
+containParameters :: Expression -> Text -> Bool
+containParameters u x =
+  case getAllSymbols u of
+    Right symbolSet ->
+      not (Set.null symbolSet) && symbolSet /= Set.singleton x
+    Left _ -> False  -- If symbols extraction fails, assume no parameters
+
+  -- ============================================================================
+-- * isNumerical
+-- ============================================================================
+
+isNumerical :: Expression -> Bool
+isNumerical u =
+  case automaticSimplify u of
+    Right u' -> case u' of
+      -- Integer or Fraction
+      Number _             -> True
+      Fraction _ _         -> True
+
+      -- Symbols pi or e
+      Pi'                  -> True
+      E'                   -> True
+
+      -- Compound expressions with numerical operands
+      Product xs           -> all isNumerical xs
+      Sum xs               -> all isNumerical xs
+      Quotient n d         -> isNumerical n && isNumerical d
+      UnaryDifference x    -> isNumerical x
+      BinaryDifference x y -> isNumerical x && isNumerical y
+      Power x y            -> isNumerical x && isNumerical y
+      Factorial x          -> isNumerical x
+      Function _ args      -> all isNumerical args
+
+      _                    -> False
+
+    Left _ -> False  -- If simplification fails, assume not numerical
+
+-- ============================================================================
+-- * Tree Size
+-- ============================================================================
+
+-- | Calculate the tree-size of an expression
+-- Tree-size is the number of symbols, integers, algebraic operators, and function names
+-- For example: (x + sin(x) + 2) * x^3 has tree-size 9
+-- Components: x, +, sin, x, 2, *, x, ^, 3
+treeSize :: Expression -> Int
+treeSize u =
+  case automaticSimplify u of
+    Right u' -> treeSize' u'
+    Left _ -> 0  -- If simplification fails, assume tree size is 0
+  where
+    treeSize' :: Expression -> Int
+    treeSize' = \case
+      -- Atomic expressions count as 1
+      Number _     -> 1  -- The integer itself
+      Fraction _ _ -> 3   -- numerator + fraction operator + denominator  
+      Symbol _     -> 1  -- The symbol itself
+
+      -- Compound expressions: operator + operands
+      Product xs           -> 1 + sum (NE.map treeSize xs)  -- * operator + operands
+      Sum xs               -> 1 + sum (NE.map treeSize xs)  -- + operators + operands
+      Quotient n d         -> 1 + treeSize n + treeSize d  -- / operator + operands
+      UnaryDifference x    -> 1 + treeSize x  -- - operator + operand
+      BinaryDifference x y -> 1 + treeSize x + treeSize y  -- - operator + operands
+      Power x y            -> 1 + treeSize x + treeSize y  -- ^ operator + operands
+      Factorial x          -> 1 + treeSize x  -- ! operator + operand
+      Function _ args   -> 1 + sum (NE.map treeSize args)  -- function name + arguments
+
+-- ============================================================================
+-- Substitute
+-- ============================================================================
+
+-- | Apply a transformation function to all sub-expressions in an expression
+-- substitute u f applies function f to every sub-expression of u, including u itself
+-- 
+-- IMPORTANT: The transformation function f MUST handle all possible Expression cases
+-- or include a catch-all pattern (_ -> Nothing) to avoid runtime errors.
+-- 
+-- Example of SAFE usage:
+-- @
+-- let safeMapping = \case
+--       Symbol "x" -> Just (Number 5)
+--       Symbol "y" -> Just (Symbol "z") 
+--       _ -> Nothing  -- ← REQUIRED catch-all pattern
+-- @
+-- Structural substitution (based on the expression tree structure)
+-- substitute ("a" + "b" + "c") (\case "a" :+: "b" -> return "x"; _ -> Nothing)
+-- = "a" + "b" + "c"
+-- This is because a + b is not a complete sub-expression
+-- However,
+-- substitute ("a" + "b" + "c") (\case (Symbol "a") -> return "x" - "b"; _ -> Nothing)
+-- = "c" + "x"
+substitute :: Expression -> (Expression -> Maybe Expression) -> ExpressionResult Expression
+substitute u f =
+  case automaticSimplify u of
+    Right u' -> substitute' u' >>= automaticSimplify
+    Left err -> Left err
+  where
+    substitute' :: Expression -> ExpressionResult Expression
+    substitute' expr = do
+      -- First check if we should transform this expression directly
+      case f expr of
+        Just result -> return result
+        Nothing -> case expr of
+          -- If no direct transformation, recurse into sub-expressions
+          -- Atomic expressions - no sub-expressions to process
+          Number _ -> return expr
+          Fraction _ _ -> return expr
+          Symbol _ -> return expr
+
+          -- Compound expressions - recurse into operands
+          Product xs -> Product <$> mapM (`substitute` f) xs
+          Sum xs -> Sum <$> mapM (`substitute` f) xs
+          Quotient n d -> Quotient <$> substitute n f <*> substitute d f
+          UnaryDifference x -> UnaryDifference <$> substitute x f
+          BinaryDifference x y -> BinaryDifference <$> substitute x f <*> substitute y f
+          Power x y -> Power <$> substitute x f <*> substitute y f
+          Factorial x -> Factorial <$> substitute x f
+          Function fname args -> Function fname <$> mapM (`substitute` f) args
