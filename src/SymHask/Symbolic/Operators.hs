@@ -8,11 +8,12 @@ module SymHask.Symbolic.Operators
     , containParameters
     , freeOf
     , getAllSymbols
-    , linearForm
-    , trigFreeOf
     , isNumerical
-    , treeSize
+    , linearForm
     , substitute
+    , treeSize
+    , trigFreeOf
+    , sequentialSubstitute
     ) where
 
 import           Control.Monad.Error.Class                               (throwError)
@@ -37,6 +38,7 @@ import           SymHask.Symbolic                                        (Expres
                                                                           pattern Sin',
                                                                           pattern Tan')
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
+import Control.Monad (foldM)
 
 -- ============================================================================
 -- * Structure-Based Operators
@@ -268,13 +270,13 @@ treeSize :: Expression -> Int
 treeSize u =
   case automaticSimplify u of
     Right u' -> treeSize' u'
-    Left _ -> 0  -- If simplification fails, assume tree size is 0
+    Left _   -> 0  -- If simplification fails, assume tree size is 0
   where
     treeSize' :: Expression -> Int
     treeSize' = \case
       -- Atomic expressions count as 1
       Number _     -> 1  -- The integer itself
-      Fraction _ _ -> 3   -- numerator + fraction operator + denominator  
+      Fraction _ _ -> 3   -- numerator + fraction operator + denominator
       Symbol _     -> 1  -- The symbol itself
 
       -- Compound expressions: operator + operands
@@ -293,24 +295,30 @@ treeSize u =
 
 -- | Apply a transformation function to all sub-expressions in an expression
 -- substitute u f applies function f to every sub-expression of u, including u itself
--- 
+--
 -- IMPORTANT: The transformation function f MUST handle all possible Expression cases
 -- or include a catch-all pattern (_ -> Nothing) to avoid runtime errors.
--- 
+--
 -- Example of SAFE usage:
 -- @
 -- let safeMapping = \case
 --       Symbol "x" -> Just (Number 5)
---       Symbol "y" -> Just (Symbol "z") 
+--       Symbol "y" -> Just (Symbol "z")
 --       _ -> Nothing  -- ← REQUIRED catch-all pattern
 -- @
--- Structural substitution (based on the expression tree structure)
--- substitute ("a" + "b" + "c") (\case "a" :+: "b" -> return "x"; _ -> Nothing)
--- = "a" + "b" + "c"
+--
+-- Note that it is a structural substitution (based on the expression tree structure)
+-- @substitute ("a" + "b" + "c") (\case "a" :+: "b" -> return "x"; _ -> Nothing)
+-- = "a" + "b" + "c"@
 -- This is because a + b is not a complete sub-expression
 -- However,
--- substitute ("a" + "b" + "c") (\case (Symbol "a") -> return "x" - "b"; _ -> Nothing)
--- = "c" + "x"
+-- @substitute ("a" + "b" + "c") (\case (Symbol "a") -> return "x" - "b"; _ -> Nothing)
+-- = "c" + "x"@
+--
+-- For concurrent substitutions (multiple transformations applied at once),
+-- You can add more patterns to the same function f.
+-- For sequential substitutions (one transformation after another),
+-- use the 'sequentialSubstitute' function.
 substitute :: Expression -> (Expression -> Maybe Expression) -> ExpressionResult Expression
 substitute u f =
   case automaticSimplify u of
@@ -338,3 +346,14 @@ substitute u f =
           Power x y -> Power <$> substitute x f <*> substitute y f
           Factorial x -> Factorial <$> substitute x f
           Function fname args -> Function fname <$> mapM (`substitute` f) args
+
+-- Apply a list of transformation functions in sequence to all sub-expressions
+-- Let L = [f1, f2, ..., fn] be a list of transformation functions
+-- @sequentialSubstitute u L@ is defined as
+-- @sequentialSubstitute u L = substitute (...(substitute (substitute u f1) f2)...) fn@
+sequentialSubstitute
+  :: Expression
+  -> [Expression -> Maybe Expression]
+  -> ExpressionResult Expression
+sequentialSubstitute = foldM substitute
+
