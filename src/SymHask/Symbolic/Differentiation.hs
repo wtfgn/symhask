@@ -7,6 +7,7 @@ module SymHask.Symbolic.Differentiation
 
 import           Control.Monad.Error.Class                               (throwError)
 import qualified Data.List.NonEmpty                                      as NE
+import           Data.Text                                               (Text)
 import           SymHask.Symbolic                                        (Expression (..),
                                                                           ExpressionError (..),
                                                                           ExpressionResult,
@@ -14,14 +15,10 @@ import           SymHask.Symbolic                                        (Expres
                                                                           isProduct,
                                                                           isSin,
                                                                           isSum,
-                                                                          pattern Sin')
+                                                                          pattern Sin',
+                                                                          pattern UnevaluatedD)
 import           SymHask.Symbolic.Operators                              (freeOf)
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
-import Data.Text (Text)
-
-pattern UnevaluatedD :: Expression -> Text -> Expression
-pattern UnevaluatedD u x = Function "deriv" [u, Symbol x]
-
 
 -- Let u be an algebraic expression and let x be a symbol. The operator
 -- differentiate(u, x), which evaluates the derivative of u with respect to x

@@ -77,6 +77,7 @@ module SymHask.Symbolic
     , pattern Sqrt'
     , pattern Tan'
     , pattern Tanh'
+    , pattern UnevaluatedD
     ) where
 
 import           Control.DeepSeq           (NFData)
@@ -376,6 +377,9 @@ pattern x :-: y = BinaryDifference x y
 pattern x :/: y = Quotient x y
 pattern x :**: y = Power x y
 pattern LogBase' x y = Function "logBase" [x, y]
+
+pattern UnevaluatedD :: Expression -> Text -> Expression
+pattern UnevaluatedD u x = Function "deriv" [u, Symbol x]
 
 pattern
   Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Cot', Sec', Csc',
