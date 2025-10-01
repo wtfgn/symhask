@@ -8,7 +8,7 @@ import TextShow (showt)
 import qualified Data.List.NonEmpty as NE
 import Data.List (intersperse)
 
--- Convert an expression to a Haskell expression
+-- | Convert an expression to a Haskell expression
 toHaskell :: Expression -> Text
 toHaskell = \case
   Number n -> showt n
@@ -37,7 +37,7 @@ toHaskell = \case
     let argStrs = map asArg $ NE.toList args
     in fname <> " " <> mconcat (intersperse " " argStrs)
 
--- Show numbers and symbols as is, while surrounding everything
+-- | Show numbers and symbols as is, while surrounding everything
 -- else in parentheses.
 asArg :: Expression -> Text
 asArg x@(Number n)
@@ -64,6 +64,6 @@ asMultiplyArg x@(_ :-: _) = par $ toHaskell x
 -- and multiplication is commutative, so no parentheses are needed.
 asMultiplyArg x = toHaskell x
 
--- Add parentheses around a string
+-- | Add parentheses around a string
 par :: Text -> Text
 par s = "(" <> s <> ")"
