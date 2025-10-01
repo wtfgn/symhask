@@ -77,7 +77,15 @@ module SymHask.Symbolic
     , pattern Sqrt'
     , pattern Tan'
     , pattern Tanh'
-    , pattern UnevaluatedD
+    , pattern Acsc'
+    , pattern Asec'
+    , pattern Acot'
+    , pattern Coth'
+    , pattern Csch'
+    , pattern Sech'
+    , pattern ACoth'
+    , pattern ASech'
+    , pattern ACsch'
     ) where
 
 import           Control.DeepSeq           (NFData)
@@ -378,12 +386,12 @@ pattern x :/: y = Quotient x y
 pattern x :**: y = Power x y
 pattern LogBase' x y = Function "logBase" [x, y]
 
-pattern UnevaluatedD :: Expression -> Text -> Expression
-pattern UnevaluatedD u x = Function "deriv" [u, Symbol x]
-
 pattern
-  Negate', Abs', Signum', Exp', Log', Sqrt', Sin', Cos', Tan', Cot', Sec', Csc',
-  Asin', Acos', Atan', Sinh', Cosh', Tanh', Asinh', Acosh', Atanh'
+  Negate', Abs', Signum', Exp', Log', Sqrt',
+  Sin', Cos', Tan', Cot', Sec', Csc',
+  Asin', Acos', Atan', Acot', Asec', Acsc',
+  Sinh', Cosh', Tanh', Coth', Sech', Csch',
+  Asinh', Acosh', Atanh', ACoth', ASech', ACsch'
   :: Expression -> Expression
 pattern Negate' x = Function "negate" [x]
 pattern Abs' x = Function "abs" [x]
@@ -400,12 +408,21 @@ pattern Csc' x = Function "csc" [x]
 pattern Asin' x = Function "asin" [x]
 pattern Acos' x = Function "acos" [x]
 pattern Atan' x = Function "atan" [x]
+pattern Acot' x = Function "acot" [x]
+pattern Asec' x = Function "asec" [x]
+pattern Acsc' x = Function "acsc" [x]
 pattern Sinh' x = Function "sinh" [x]
 pattern Cosh' x = Function "cosh" [x]
 pattern Tanh' x = Function "tanh" [x]
+pattern Coth' x = Function "coth" [x]
+pattern Sech' x = Function "sech" [x]
+pattern Csch' x = Function "csch" [x]
 pattern Asinh' x = Function "asinh" [x]
 pattern Acosh' x = Function "acosh" [x]
 pattern Atanh' x = Function "atanh" [x]
+pattern ACoth' x = Function "acoth" [x]
+pattern ASech' x = Function "asech" [x]
+pattern ACsch' x = Function "acsch" [x]
 -- ============================================================================
 -- * Helper Functions
 -- ============================================================================
