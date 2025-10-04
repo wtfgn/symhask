@@ -295,8 +295,7 @@ simplifyFactorial = \case
     | n < 0 -> throwError $ InvalidDomain "Factorial of a negative number is undefined" u
     | n == 0 -> return 1
     | otherwise -> return $ Number $ factorial n
-  u -> throwError $ UnsupportedOperation
-    "Expected a Factorial expression with a non-negative integer argument." u
+  u -> return u
 
 -- ============================================================================
 -- * Simplification of Functions
