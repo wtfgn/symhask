@@ -7,14 +7,7 @@ module SymHask.Symbolic.Simplification.AutomaticSimplification
 
 import           Control.Monad.Error.Class                      (throwError)
 import qualified Data.List.NonEmpty                             as NE
-import           SymHask.Symbolic                               (Expression (..),
-                                                                 ExpressionError (..),
-                                                                 ExpressionResult,
-                                                                 getConst,
-                                                                 getPowerBase,
-                                                                 getPowerExponent,
-                                                                 getTerm,
-                                                                 isConstant)
+import           SymHask.Symbolic
 import           SymHask.Numeric.Factorial                     (factorial)
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                  simplifyRationalNumber)
@@ -160,8 +153,11 @@ simplifyProductStep [u1, u2]
     if p == Number 1
       then return []
       else return [p]
-  | u2 < u1 = return [u2, u1]
-  | otherwise = return [u1, u2]
+  | otherwise = do
+    cmp <- u2 <. u1
+    if cmp
+      then return [u2, u1]
+      else return [u1, u2]
 
 -- Suppose L = [u1, u2, ..., uN] with N > 2
 simplifyProductStep (x : xs) = do
@@ -235,8 +231,11 @@ simplifySumStep [u1, u2]
     if p == Number 0
       then return []
       else return [p]
-  | u2 < u1 = return [u2, u1]
-  | otherwise = return [u1, u2]
+  | otherwise = do
+    cmp <- u2 <. u1
+    if cmp
+      then return [u2, u1]
+      else return [u1, u2]
 
 -- Suppose L = [u1, u2, ..., uN] with N > 2
 simplifySumStep (x : xs) = do
@@ -304,3 +303,91 @@ simplifyFunction :: Expression -> ExpressionResult Expression
 simplifyFunction = \case
   u@(Function _ _) -> return u
   u -> throwError $ UnsupportedOperation "Expected a Function expression." u
+
+
+
+(<.) :: Expression -> Expression -> ExpressionResult Bool
+(<.) u v = do
+  case (u, v) of
+    -- Compare constants
+    (Number n1, Number n2) -> return $ n1 < n2
+    (Fraction n1 d1, Fraction n2 d2) -> return $ (n1 * d2) < (n2 * d1)
+    (Number x, Fraction n d) -> return $ (x * d) < n
+
+    -- Compare symbols (lexicographically)
+    (Symbol s1, Symbol s2) -> return $ s1 < s2
+
+    -- Compare products and sums by their operands [u_1, ..., u_m] and [v_1, ..., v_n]
+    -- start comparing with the most significant operand u_m and v_n
+    (Product xs1, Product xs2) ->
+      compareOperands (NE.reverse xs1) (NE.reverse xs2)
+    (Sum xs1, Sum xs2) ->
+      compareOperands (NE.reverse xs1) (NE.reverse xs2)
+
+    -- Compare powers by base and exponent
+    (Power _ _, Power _ _) -> do
+      b1 <- getPowerBase u
+      b2 <- getPowerBase v
+      e1 <- getPowerExponent u
+      e2 <- getPowerExponent v
+      if b1 == b2 then e1 <. e2 else b1 <. b2
+
+    -- Compare factorials
+    (Factorial x, Factorial y) -> x <. y
+
+    -- Compare functions by name and arguments
+    -- The most significant arguments for functions are thre first operands
+    (Function f1 args1, Function f2 args2) ->
+      if f1 == f2 then compareOperands args1 args2 else pure $ f1 < f2
+
+    -- Compare when one is an integer or fraction and the other is any other type
+    -- This ensures constant must be the first operand
+    (Number _, _) -> return True
+    (Fraction _ _, _) -> return True
+
+    -- Compare when one is a product and the other is a power, sum, factorial,
+    -- function or symbol
+    (Product _, Power _ _) -> u <. mkProduct [v]
+    (Product _, Sum _) -> u <. mkProduct [v]
+    (Product _, Factorial _) -> u <. mkProduct [v]
+    (Product _, Function _ _) -> u <. mkProduct [v]
+    (Product _, Symbol _) -> u <. mkProduct [v]
+
+    -- Compare when one is a power and the other is a sum, factorial, function, or symbol
+    (Power _ _, Sum _) -> u <. mkPower v 1
+    (Power _ _, Factorial _) -> u <. mkPower v 1
+    (Power _ _, Function _ _) -> u <. mkPower v 1
+    (Power _ _, Symbol _) -> u <. mkPower v 1
+
+    -- Compare when one is a sum and the other is a factorial, function, or symbol
+    (Sum _, Factorial _) -> u <. mkSum [v]
+    (Sum _, Function _ _) -> u <. mkSum [v]
+    (Sum _, Symbol _) -> u <. mkSum [v]
+
+    -- Compare when one is a factorial and the other is a function or symbol
+    (Factorial x, Function _ _) ->
+      if x == v then return False
+      else u <. mkFactorial v
+    (Factorial x, Symbol _) ->
+      if x == v then return False
+      else u <. mkFactorial v
+
+    -- Compare when one is a function and the other is a symbol
+    (Function f _, Symbol s) ->
+      if u == v then return False
+      else return $ f < s
+
+    -- If all else fails, reverse the comparison
+    -- This ensures a total order even for mixed types
+    _ -> not <$> (v <. u)
+  where
+  compareOperands :: Operands -> Operands -> ExpressionResult Bool
+  compareOperands xs ys = compareOperands' (NE.toList xs) (NE.toList ys)
+    where
+      compareOperands' [] [] = pure False        -- Equal lists
+      compareOperands' [] (_:_) = pure True      -- First shorter
+      compareOperands' (_:_) [] = pure False     -- Second shorter  
+      compareOperands' (x:xs') (y:ys') = do
+        if x == y 
+          then compareOperands' xs' ys'
+          else x <. y
