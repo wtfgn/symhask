@@ -1,188 +1,150 @@
-{-# LANGUAGE MultiWayIf      #-}
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiWayIf            #-}
+{-# LANGUAGE OverloadedLists       #-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module SymHask.Symbolic.Simplification.RationalNumber
     ( simplifyRNE
-    , simplifyRationalNumber
+    , toStandardRNE
     ) where
 
-import           SymHask.Symbolic (Expression (..), ExpressionError (..),
-                                   ExpressionResult, mkFraction)
-import Control.Monad.Error.Class (throwError)
+import           Control.Monad                ((>=>))
+import           Control.Monad.Error.Class    (throwError)
+import           Data.Coerce                  (coerce)
+import           SymHask.Core.Expression
 
--- This module is intended to handle simplification of rational numbers
--- and related operations on symbolic expressions involving rational numbers.
+simplifyRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
+simplifyRNE = simplifyRNEStep >=> toStandardRNE
 
--- ============================================================================
--- * Simplification Functions
--- ============================================================================
-
-simplifyRationalNumber :: Expression -> ExpressionResult Expression
-simplifyRationalNumber = \case
-  u@(Number _) -> return u
-
-  u@(Fraction n d)
-    | d == 0 -> throwError $ DivisionByZero u
-    | n == 0 -> return 0
-    | n `mod` d == 0 -> return (Number (n `div` d))
+toStandardRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
+toStandardRNE = \case
+  Number' n -> pure $ mkNumber n
+  Fraction' n d
+    | d == 0 -> throwError DivisionByZero
+    | n == 0 -> pure $ mkNumber 0
+    | n `mod` d == 0 -> pure $ mkNumber (n `div` d)
     | otherwise ->
       let
         g = gcd n d
         n' = if d > 0 then n `div` g else (-n) `div` g
         d' = if d > 0 then d `div` g else (-d) `div` g
-      in return (Fraction n' d')
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for rational simplification, only \
-    \a fraction in function (FracOp) notation (with non-zero denominator) \
-    \or an integer is expected." u
+      in pure $ coerce (mkFraction n' d')
 
-simplifyRNE :: Expression -> ExpressionResult Expression
-simplifyRNE expr = do
-  simplified <- simplifyStep expr
-  simplifyRationalNumber simplified
+  _ -> throwError $ UnsupportedOperation
+    "toStandardRNE only supports Number and Fraction types."
 
-simplifyStep :: Expression -> ExpressionResult Expression
-simplifyStep = \case
-  u@(Number _) -> return u
+simplifyRNEStep :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
+simplifyRNEStep = \case
+  Number' n -> pure $ mkNumber n
 
-  u@(Fraction _ d)
-    | d == 0 -> throwError $ DivisionByZero u
-    | otherwise -> simplifyRationalNumber u
+  Fraction' n d
+    | d == 0 -> throwError DivisionByZero
+    | otherwise -> coerce $ toStandardRNE (mkFraction n d)
 
-  Sum [x] -> simplifyStep x
+  Sum' [x] -> simplifyRNEStep x
 
-  Sum [x, y] -> do
-    x' <- simplifyStep x
-    y' <- simplifyStep y
+  Sum' [x, y] -> do
+    x' <- simplifyRNEStep x
+    y' <- simplifyRNEStep y
     evaluateSum x' y'
 
-  UnaryDifference x -> do
-    x' <- simplifyStep x
-    evaluateProduct (Number (-1)) x'
+  UnaryDiff' x -> do
+    x' <- simplifyRNEStep x
+    evaluateProduct (mkNumber (-1)) x'
 
-  BinaryDifference x y -> do
-    x' <- simplifyStep x
-    y' <- simplifyStep y
+  BinaryDiff' x y -> do
+    x' <- simplifyRNEStep x
+    y' <- simplifyRNEStep y
     evaluateDifference x' y'
 
-  Product [x] -> simplifyStep x
+  Product' [x] -> simplifyRNEStep x
 
-  Product [x, y] -> do
-    x' <- simplifyStep x
-    y' <- simplifyStep y
+  Product' [x, y] -> do
+    x' <- simplifyRNEStep x
+    y' <- simplifyRNEStep y
     evaluateProduct x' y'
 
-  Quotient x y -> do
-    x' <- simplifyStep x
-    y' <- simplifyStep y
+  Quotient' x y -> do
+    x' <- simplifyRNEStep x
+    y' <- simplifyRNEStep y
     evaluateQuotient x' y'
 
-  Power x (Number n) -> do
-    x' <- simplifyStep x
+
+  Power' x (Number' n) -> do
+    x' <- simplifyRNEStep x
     evaluatePower x' n
 
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for simplification, \
-    \only RNE is expected." u
+  _ -> throwError $ UnsupportedOperation
+    "Only integer, fraction, unary/binary sums, unary/binary differences, \
+    \unary/binary products, quotients, powers (with integer exponents), \
+    \are supported."
 
-
--- ============================================================================
--- * Evaluation Helper Functions
--- ============================================================================
-evaluateSum :: Expression -> Expression -> ExpressionResult Expression
+evaluateSum :: UnsimplifiedExpr -> UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 evaluateSum v w = do
-  nv <- safeGetNumerator v
-  nw <- safeGetNumerator w
-  dv <- safeGetDenominator v
-  dw <- safeGetDenominator w
+  nv <- getNumerator v
+  dv <- getDenominator v
+  nw <- getNumerator w
+  dw <- getDenominator w
+  let n = nv * dw + nw * dv
+  let d = dv * dw
+  return $ mkFraction n d
 
-  let commonDenominator = dv * dw
-      newNumerator = nv * dw + nw * dv
-
-  return $ Fraction newNumerator commonDenominator
-
-evaluateDifference :: Expression -> Expression -> ExpressionResult Expression
+evaluateDifference :: UnsimplifiedExpr -> UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 evaluateDifference v w = do
-  nv <- safeGetNumerator v
-  nw <- safeGetNumerator w
-  dv <- safeGetDenominator v
-  dw <- safeGetDenominator w
+  nv <- getNumerator v
+  dv <- getDenominator v
+  nw <- getNumerator w
+  dw <- getDenominator w
+  let n = nv * dw - nw * dv
+  let d = dv * dw
+  return $ mkFraction n d
 
-  let commonDenominator = dv * dw
-      newNumerator = nv * dw - nw * dv
-
-  return $ Fraction newNumerator commonDenominator
-
-evaluateProduct :: Expression -> Expression -> ExpressionResult Expression
+evaluateProduct :: UnsimplifiedExpr -> UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 evaluateProduct v w = do
-  nv <- safeGetNumerator v
-  nw <- safeGetNumerator w
-  dv <- safeGetDenominator v
-  dw <- safeGetDenominator w
+  nv <- getNumerator v
+  dv <- getDenominator v
+  nw <- getNumerator w
+  dw <- getDenominator w
+  let n = nv * nw
+  let d = dv * dw
+  return $ mkFraction n d
 
-  let newNumerator = nv * nw
-      newDenominator = dv * dw
-
-  return $ Fraction newNumerator newDenominator
-
-evaluateQuotient :: Expression -> Expression -> ExpressionResult Expression
+evaluateQuotient :: UnsimplifiedExpr -> UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 evaluateQuotient v w = do
-  nv <- safeGetNumerator v
-  nw <- safeGetNumerator w
-  dv <- safeGetDenominator v
-  dw <- safeGetDenominator w
-
+  nv <- getNumerator v
+  dv <- getDenominator v
+  nw <- getNumerator w
+  dw <- getDenominator w
   if nw == 0
-    then throwError $ DivisionByZero w
-    else let newNumerator = nv * dw
-             newDenominator = dv * nw
-         in return $ Fraction newNumerator newDenominator
+    then throwError DivisionByZero
+    else return $ mkFraction (nv * dw) (dv * nw)
 
-evaluatePower :: Expression -> Integer -> ExpressionResult Expression
+evaluatePower :: UnsimplifiedExpr -> Integer -> EvalResult UnsimplifiedExpr
 evaluatePower v n = do
-  let u = Power v (Number n)
-  vn <- safeGetNumerator v
-  vd <- safeGetDenominator v
-
+  nv <- getNumerator v
+  dv <- getDenominator v
   if
-    | vn == 0 && n >= 1 -> return 0
-    | vn == 0 && n <= 0 -> throwError $ InvalidDomain "Zero to non-positive power" u
-    | n > 0             -> evaluatePower v (n - 1) >>= \s -> evaluateProduct s v
-    | n == 0            -> return 1
-    | n == -1           -> return $ mkFraction vd vn
-    | n < -1            -> evaluatePower (mkFraction vd vn) (-n)
-    | otherwise         -> throwError $ EvaluationFailure "Invalid power operation" u
+    | nv == 0 && n  >= 1 -> return $ mkNumber 0
+    | nv == 0 && n <= 0  -> throwError DivisionByZero
+    | n > 0 -> evaluatePower v (n - 1) >>= \s -> evaluateProduct s v
+    | n == 0 -> return $ mkNumber 1
+    | n == -1 -> return $ mkFraction dv nv
+    | n < -1 -> evaluatePower (mkFraction dv nv) (-n)
+    | otherwise -> throwError $ EvaluationFailure
+        "Unexpected case in power evaluation."
 
--- ============================================================================
--- * Accessor Functions
--- ============================================================================
+getNumerator :: UnsimplifiedExpr -> EvalResult Integer
+getNumerator (Number' n)     = pure n
+getNumerator (Fraction' n _) = pure n
+getNumerator _              = throwError $ UnsupportedOperation
+  "Only Number and Fraction types are supported."
 
-getNumerator :: Expression -> Maybe Integer
-getNumerator (Number n)     = Just n
-getNumerator (Fraction n _) = Just n
-getNumerator _              = Nothing
-
-getDenominator :: Expression -> Maybe Integer
-getDenominator (Number _)     = Just 1
-getDenominator (Fraction _ d) = Just d
-getDenominator _              = Nothing
-
--- ============================================================================
--- * Safe Accessor Functions
--- ============================================================================
-
-safeGetNumerator :: Expression -> ExpressionResult Integer
-safeGetNumerator expr =
-  case getNumerator expr of
-    Just n -> return n
-    Nothing -> throwError $
-      UnsupportedOperation "Cannot extract numerator from non-numeric expression" expr
-
-safeGetDenominator :: Expression -> ExpressionResult Integer
-safeGetDenominator expr =
-  case getDenominator expr of
-    Just d -> if d == 0
-              then throwError $ DivisionByZero expr
-              else return d
-    Nothing -> throwError $
-      UnsupportedOperation "Cannot extract denominator from non-numeric expression" expr
+getDenominator :: UnsimplifiedExpr -> EvalResult Integer
+getDenominator (Number' _)     = return 1
+getDenominator (Fraction' _ d) = return d
+getDenominator _              = throwError $ UnsupportedOperation
+  "Only Number and Fraction types are supported."

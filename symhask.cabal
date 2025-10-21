@@ -26,18 +26,16 @@ source-repository head
 library
   exposed-modules:
       SymHask
-      SymHask.Numeric.Factorial
-      SymHask.Numeric.Integers
+      SymHask.Core.Expression
+      SymHask.Display.Haskell
       SymHask.Symbolic
+      SymHask.Symbolic.Analysis
       SymHask.Symbolic.Differentiation
-      SymHask.Symbolic.Evaluation
-      SymHask.Symbolic.Haskell
-      SymHask.Symbolic.Operators
-      SymHask.Symbolic.SemanticEquality
+      SymHask.Symbolic.Manipulation
+      SymHask.Symbolic.Manipulation.Substitution
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
       SymHask.Symbolic.Simplification.RationalNumber
-      SymHask.Symbolic.Trigonometry
   other-modules:
       Paths_symhask
   autogen-modules:
@@ -47,15 +45,18 @@ library
   default-extensions:
       LambdaCase
       OverloadedStrings
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunticked-promoted-constructors
   build-depends:
       base >=4.7 && <5
     , containers >=0.6 && <0.8
+    , criterion
     , deepseq >=1.4 && <1.6
+    , hashable ==1.4.*
     , mtl ==2.3.1.*
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
     , transformers
+    , unordered-containers ==0.2.*
   default-language: Haskell2010
 
 executable symhask-exe
@@ -69,16 +70,19 @@ executable symhask-exe
   default-extensions:
       LambdaCase
       OverloadedStrings
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , containers >=0.6 && <0.8
+    , criterion
     , deepseq >=1.4 && <1.6
+    , hashable ==1.4.*
     , mtl ==2.3.1.*
     , symhask
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
     , transformers
+    , unordered-containers ==0.2.*
   default-language: Haskell2010
 
 test-suite symhask-test
@@ -94,14 +98,17 @@ test-suite symhask-test
   default-extensions:
       LambdaCase
       OverloadedStrings
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , containers >=0.6 && <0.8
+    , criterion
     , deepseq >=1.4 && <1.6
+    , hashable ==1.4.*
     , mtl ==2.3.1.*
     , symhask
     , text >=2.0 && <2.2
     , text-show >=3.10 && <3.12
     , transformers
+    , unordered-containers ==0.2.*
   default-language: Haskell2010

@@ -31,6 +31,9 @@ dependencies:
 - text-show >= 3.10 && < 3.12
 - mtl >= 2.3.1 && < 2.3.2
 - transformers
+- criterion
+- unordered-containers >= 0.2 && < 0.3
+- hashable >= 1.4 && < 1.5
 
 ghc-options:
 - -Wall
@@ -42,6 +45,7 @@ ghc-options:
 - -Wmissing-home-modules
 - -Wpartial-fields
 - -Wredundant-constraints
+- -Wunticked-promoted-constructors
 
 library:
   source-dirs: src
