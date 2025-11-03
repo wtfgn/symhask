@@ -30,6 +30,10 @@ library
       SymHask.Display.Haskell
       SymHask.Symbolic
       SymHask.Symbolic.Analysis
+      SymHask.Symbolic.Analysis.Absolute
+      SymHask.Symbolic.Analysis.LinearForm
+      SymHask.Symbolic.Analysis.Max
+      SymHask.Symbolic.Analysis.Utils
       SymHask.Symbolic.Differentiation
       SymHask.Symbolic.Manipulation
       SymHask.Symbolic.Manipulation.Substitution

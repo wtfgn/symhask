@@ -1,18 +1,19 @@
-{-# LANGUAGE ViewPatterns #-}
-
 module SymHask.Symbolic.Manipulation
-    ( module SymHask.Symbolic.Manipulation.Substitution
+    ( -- * Wrappers
+      Pattern (..)
+    , Replacement (..)
+      -- * With Simplification
+    , concurSubs
+    , seqSubs
+    , subs
+      -- * Structural Substitution (Based on the AST)
+    , concurSubsStruct
+    , seqSubsStruct
+    , subsStruct
     ) where
 
-import           Control.Monad                                   (foldM)
-import           Data.List                                       (foldl')
-import           Data.List.NonEmpty                              (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty                              as NE
-import           Data.Text                                       (Text)
-import           SymHask.Core.Expression
-import           SymHask.Symbolic.Analysis
 import           SymHask.Symbolic.Manipulation.Substitution
-import           SymHask.Symbolic.Simplification
+
 
 
 

@@ -10,12 +10,12 @@ module SymHask.Symbolic.Differentiation
     , mkDiffExpr
     , mkDiffExpr'
     ) where
-import           Control.Monad
-import           Control.Monad.Error.Class
+import Control.Monad ( foldM )
+import Control.Monad.Error.Class ( MonadError(throwError) )
 import           Data.List.NonEmpty                   (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                   as NE
 import           Data.Text                            (Text)
-import           SymHask.Symbolic.Analysis
+import SymHask.Symbolic.Analysis ( freeOf )
 import           SymHask.Symbolic.Simplification
 
 -- ============================================================================
