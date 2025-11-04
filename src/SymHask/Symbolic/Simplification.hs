@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module SymHask.Symbolic.Simplification
     ( -- Re-export core framework
-      module SymHask.Core.Expression
+      module SymHask.Symbolic
     , (.**.)
     , (.*.)
     , (.+.)
@@ -9,7 +9,7 @@ module SymHask.Symbolic.Simplification
     , (./.)
     ) where
 
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification.AutomaticSimplification ()
 import           SymHask.Symbolic.Simplification.RationalNumber          ()
 

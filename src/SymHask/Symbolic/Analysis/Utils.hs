@@ -15,7 +15,7 @@ import           Control.Monad
 import qualified Data.HashSet                               as HS
 import qualified Data.List.NonEmpty                         as NE
 import           Data.Text                                  (Text)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Manipulation.Substitution
 import           SymHask.Symbolic.Simplification
 

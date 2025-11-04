@@ -9,7 +9,7 @@ module SymHask.Symbolic.Analysis.Max
 import           Control.Monad.Error.Class
 import qualified Data.List.NonEmpty                              as NE
 import           Data.Text                                       (Text)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification
 import qualified Data.HashSet                                    as HS
 import Control.Monad (foldM)

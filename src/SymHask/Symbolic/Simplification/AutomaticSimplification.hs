@@ -17,7 +17,7 @@ import           Data.Either                                         (fromRight)
 import           Data.List.NonEmpty                                  (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                                  as NE
 import           Data.Text                                           (Text)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                       toStandardRNE)
 import Data.Coerce

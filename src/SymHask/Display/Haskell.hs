@@ -8,7 +8,7 @@ module SymHask.Display.Haskell
 import           Data.List                    (intersperse)
 import qualified Data.List.NonEmpty           as NE
 import           Data.Text                    (Text)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           TextShow                     (showt)
 
 -- | Convert an expression to a Haskell expression

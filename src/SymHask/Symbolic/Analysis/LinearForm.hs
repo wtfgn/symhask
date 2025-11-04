@@ -8,7 +8,7 @@ module SymHask.Symbolic.Analysis.LinearForm
 import           Control.Monad.Error.Class
 import qualified Data.List.NonEmpty              as NE
 import           Data.Text                       (Text)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Analysis.Utils (freeOf)
 import           SymHask.Symbolic.Simplification
 

@@ -14,7 +14,7 @@ module SymHask.Symbolic.Simplification.RationalNumber
 import           Control.Monad                ((>=>))
 import           Control.Monad.Error.Class    (throwError)
 import           Data.Coerce                  (coerce)
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 
 simplifyRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 simplifyRNE = simplifyRNEStep >=> toStandardRNE

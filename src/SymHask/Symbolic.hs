@@ -1,31 +1,42 @@
-{-# LANGUAGE DeriveAnyClass  #-}
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE DerivingVia     #-}
-{-# LANGUAGE InstanceSigs    #-}
-{-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingVia          #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE InstanceSigs         #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 
 module SymHask.Symbolic
-    ( -- * Core Data Types
-      Expression (..)
-    , ExpressionError (..)
-      -- * Type Aliases
-    , ExpressionResult
-    , Operands
-      -- * Smart Constructors
-    , mkBinaryDifference
-    , mkFactorial
-    , mkFraction
-    , mkFunction
-    , mkNumber
-    , mkPower
-    , mkProduct
-    , mkQuotient
-    , mkSum
-    , mkSymbol
-    , mkUnaryDifference
-      -- * Predicates
-    , isBinaryDifference
+    ( -- Error types and result monad
+      EvalResult
+      -- Data types
+    , Expr ()
+    , ExprError (..)
+    , SimplifiedExpr
+    , UnsimplifiedExpr
+      -- data Expr patterns
+    , pattern BinaryDiff'
+    , pattern Factorial'
+    , pattern Fraction'
+    , pattern Function'
+    , pattern Number'
+    , pattern Power'
+    , pattern Product'
+    , pattern Quotient'
+    , pattern Sum'
+    , pattern Symbol'
+    , pattern UnaryDiff'
+      -- Helper functions
+    , getOperands
+    , isAtomic
+    , isBinaryDiff
     , isConstant
     , isFactorial
     , isFraction
@@ -36,26 +47,33 @@ module SymHask.Symbolic
     , isQuotient
     , isSum
     , isSymbol
-    , isUnaryDifference
-      -- * Helper Functions
-    , getBinaryFunction
-    , getConst
-    , getOperands
-    , getPowerBase
-    , getPowerExponent
-    , getTerm
-    , getUnaryFunction
-      -- * Pattern Synonyms
-    , isAtomic
-    , isSin
+    , isUnaryDiff
+      -- Constructors and pattern synonyms for easy expression building
+    , mkBinaryDiff
+    , mkFactorial
+    , mkFraction
+    , mkFunction
+    , mkNumber
+    , mkPower
+    , mkProduct
+    , mkQuotient
+    , mkSum
+    , mkSymbol
+    , mkUnaryDiff
     , pattern (:**:)
     , pattern (:*:)
     , pattern (:+:)
     , pattern (:-:)
     , pattern (:/:)
+    , pattern ACoth'
+    , pattern ACsch'
+    , pattern ASech'
     , pattern Abs'
     , pattern Acos'
     , pattern Acosh'
+    , pattern Acot'
+    , pattern Acsc'
+    , pattern Asec'
     , pattern Asin'
     , pattern Asinh'
     , pattern Atan'
@@ -63,7 +81,9 @@ module SymHask.Symbolic
     , pattern Cos'
     , pattern Cosh'
     , pattern Cot'
+    , pattern Coth'
     , pattern Csc'
+    , pattern Csch'
     , pattern E'
     , pattern Exp'
     , pattern Log'
@@ -71,320 +91,171 @@ module SymHask.Symbolic
     , pattern Negate'
     , pattern Pi'
     , pattern Sec'
+    , pattern Sech'
     , pattern Signum'
     , pattern Sin'
     , pattern Sinh'
     , pattern Sqrt'
     , pattern Tan'
     , pattern Tanh'
-    , pattern Acsc'
-    , pattern Asec'
-    , pattern Acot'
-    , pattern Coth'
-    , pattern Csch'
-    , pattern Sech'
-    , pattern ACoth'
-    , pattern ASech'
-    , pattern ACsch'
+    , pattern I'
+      -- Simplification framework
+    , SimplificationState (..)
+    , Simplify (..)
+    , unsimplify
     ) where
 
-import           Control.DeepSeq           (NFData)
-import           Control.Monad.Error.Class (throwError)
-import qualified Data.List.NonEmpty        as NE
-import           Data.Ratio                (denominator, numerator)
-import           Data.String               (IsString, fromString)
-import           Data.Text                 (Text)
-import           GHC.Generics              (Generic)
-import           Prelude                   hiding ((^))
-import           TextShow                  (TextShow)
-import           TextShow.Generic          (FromGeneric (..))
+import           Control.DeepSeq    (NFData)
+import           Data.Coerce        (coerce)
+import           Data.Hashable      (Hashable)
+import           Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NE
+import           Data.Ratio         (denominator, numerator)
+import           Data.String        (IsString (..))
+import           Data.Text          (Text)
+import qualified Data.Text          as T
+import           GHC.Generics       (Generic)
+import           TextShow           (TextShow)
+import           TextShow.Generic   (FromGeneric (FromGeneric))
 
 -- ============================================================================
--- * Core Data Types
+-- * Error Types
 -- ============================================================================
 
-type Operands = NE.NonEmpty Expression
-
--- | Unified symbolic expression type
--- This represents all kinds of mathematical expressions in the CAS
-data Expression
-  = Number Integer -- Numbers (integers)
-  | Fraction Integer Integer -- Rational numbers (n/d)
-  | Symbol Text -- Variables and constants
-  | Product Operands -- Multiplication: a * b * c * ...
-  | Sum Operands -- Addition: a + b + c + ...
-  | Quotient Expression Expression -- Division: a / b
-  | UnaryDifference Expression -- Unary negation: -a
-  | BinaryDifference Expression Expression -- Subtraction: a - b
-  | Power Expression Expression -- Exponentiation: a ^ b
-  | Factorial Expression -- Factorial: n!
-  | Function Text Operands -- Function application: f(x, y, ...)
-  -- | Structural equality, not semantic equality.
-  -- E.g., @"a" - "a" /= 0@.
-  deriving (Eq, Generic, NFData, Read, Show)
-  deriving (TextShow)
-    via FromGeneric Expression
-
-data ExpressionError
-  -- Occurs when attempting to divide by zero, which is mathematically undefined.
-  = DivisionByZero Expression
-  -- Operation is applied outside its mathematical domain.
-  | InvalidDomain Text Expression
-  -- Numeric computation exceeds representable range.
-  | ArithmeticOverflow Expression
-  -- Function/operation called with wrong number of arguments.
-  | InvalidArity Text Integer Integer Expression -- operation/function name, expected, actual, problematic expression
-  -- Operation is not implemented or not supported for given operands.
-  | UnsupportedOperation Text Expression -- operation name, expression
-  -- Reference to a symbol/variable that hasn't been defined in current context.
-  -- e.g. x + 1 where x is not defined
-  | UndefinedSymbol Text -- symbol name
-  -- General evaluation failure that doesn't fit other categories.
-  | EvaluationFailure Text Expression -- reason, expression
-  -- Failed to parse input string into expression.
-  | ParseError Text Text -- error message, input
-  | OtherError Text -- unspecified error
+data ExprError
+  = DivisionByZero
+  | InvalidDomain Text
+  | UnsupportedOperation Text
+  | EvaluationFailure Text
   deriving (Eq, Show)
 
--- a: The type of the value causing the error
--- b: The type of the successful result
-type ExpressionResult a
-  = Either ExpressionError a
+type EvalResult a = Either ExprError a
 
 -- ============================================================================
--- * Smart Constructors
+-- * Complete GADT for All Expression Types
 -- ============================================================================
 
--- | Create a number expression
-mkNumber :: Integer -> Expression
-mkNumber = Number
+type UnsimplifiedExpr = Expr 'Unsimplified
+type SimplifiedExpr = Expr 'Simplified
 
--- | Create a fraction expression
-mkFraction :: Integer -> Integer -> Expression
-mkFraction = Fraction
-
--- | Create a symbol expression
-mkSymbol :: Text -> Expression
-mkSymbol = Symbol
-
--- | Create a sum expression
-mkSum :: [Expression] -> Expression
-mkSum = Sum . NE.fromList
-
--- | Create a product expression
-mkProduct :: [Expression] -> Expression
-mkProduct = Product . NE.fromList
-
--- | Create a unary difference expression
-mkUnaryDifference :: Expression -> Expression
-mkUnaryDifference = UnaryDifference
-
--- | Create a binary difference expression
-mkBinaryDifference :: Expression -> Expression -> Expression
-mkBinaryDifference = BinaryDifference
-
--- | Create a quotient expression
-mkQuotient :: Expression -> Expression -> Expression
-mkQuotient = Quotient
-
--- | Create a power expression
-mkPower :: Expression -> Expression -> Expression
-mkPower = Power
-
--- | Create a factorial expression
-mkFactorial :: Expression -> Expression
-mkFactorial = Factorial
-
--- | Create a function expression
-mkFunction :: Text -> [Expression] -> Expression
-mkFunction f args = Function f (NE.fromList args)
-
--- ============================================================================
--- * Predicates
--- ============================================================================
-
--- | Check if expression is a number
-isNumber :: Expression -> Bool
-isNumber (Number _) = True
-isNumber _          = False
-
--- | Check if expression is a fraction
-isFraction :: Expression -> Bool
-isFraction (Fraction _ _) = True
-isFraction _              = False
-
--- | Check if expression is a symbol
-isSymbol :: Expression -> Bool
-isSymbol (Symbol _) = True
-isSymbol _          = False
-
--- | Check if expression is a product
-isProduct :: Expression -> Bool
-isProduct (Product _) = True
-isProduct _           = False
-
--- | Check if expression is a sum
-isSum :: Expression -> Bool
-isSum (Sum _) = True
-isSum _       = False
-
--- | Check if expression is a quotient
-isQuotient :: Expression -> Bool
-isQuotient (Quotient _ _) = True
-isQuotient _              = False
-
--- | Check if expression is a unary difference
-isUnaryDifference :: Expression -> Bool
-isUnaryDifference (UnaryDifference _) = True
-isUnaryDifference _                   = False
-
--- | Check if expression is a binary difference
-isBinaryDifference :: Expression -> Bool
-isBinaryDifference (BinaryDifference _ _) = True
-isBinaryDifference _                      = False
-
--- | Check if expression is a power
-isPower :: Expression -> Bool
-isPower (Power _ _) = True
-isPower _           = False
-
--- | Check if expression is a factorial
-isFactorial :: Expression -> Bool
-isFactorial (Factorial _) = True
-isFactorial _             = False
-
--- | Check if expression is a function
-isFunction :: Expression -> Bool
-isFunction (Function _ _) = True
-isFunction _              = False
-
-isSin :: Expression -> Bool
-isSin (Sin' _) = True
-isSin _        = False
-
--- | Check if expression is a constant (number or fraction)
-isConstant :: Expression -> Bool
-isConstant (Number _)     = True
-isConstant (Fraction _ _) = True
-isConstant _              = False
-
--- Check if expression is atomic (a constant, symbol, or number)
-isAtomic :: Expression -> Bool
-isAtomic (Number _)     = True
-isAtomic (Fraction _ _) = True
-isAtomic (Symbol _)     = True
-isAtomic _              = False
-
+data Expr (s :: SimplificationState)
+  -- Basic atomic expressions
+  = Number Integer
+  | Fraction Integer Integer
+  | Symbol Text
+  -- Compound algebraic expressions
+  | Product (NonEmpty (Expr s))
+  | Sum (NonEmpty (Expr s))
+  | Quotient (Expr s) (Expr s)
+  | Power (Expr s) (Expr s)
+  -- Advanced expressions
+  | Function Text (NonEmpty (Expr s))
+  | Factorial (Expr s)
+  -- Differences (eliminated during simplification)
+  | UnaryDiff (Expr s)
+  | BinaryDiff (Expr s) (Expr s)
+  deriving (Eq, Generic, Hashable, NFData, Read, Show)
+  deriving (TextShow)
+    via FromGeneric (Expr s)
 -- ============================================================================
 -- * Type Class Instances
 -- ============================================================================
+instance IsString (Expr s) where
+  fromString :: String -> Expr s
+  fromString = Symbol . T.pack
 
-instance IsString Expression where
-  fromString :: String -> Expression
-  fromString = mkSymbol . fromString
+instance Num UnsimplifiedExpr where
+  (+) :: UnsimplifiedExpr -> UnsimplifiedExpr -> UnsimplifiedExpr
+  x + y = Sum (x :| [y])
 
--- | Arithmetic operations create simplified expressions
-instance Num Expression where
-  (+) :: Expression -> Expression -> Expression
-  x + y = mkSum [x, y]
+  (*) :: UnsimplifiedExpr -> UnsimplifiedExpr -> UnsimplifiedExpr
+  x * y = Product (x :| [y])
 
-  (*) :: Expression -> Expression -> Expression
-  x * y = mkProduct [x, y]
+  negate :: UnsimplifiedExpr -> UnsimplifiedExpr
+  negate = UnaryDiff
 
-  (-) :: Expression -> Expression -> Expression
-  x - y = mkBinaryDifference x y
+  abs :: UnsimplifiedExpr -> UnsimplifiedExpr
+  abs = Function "abs" . NE.singleton
 
-  negate :: Expression -> Expression
-  negate = mkUnaryDifference
+  signum :: UnsimplifiedExpr -> UnsimplifiedExpr
+  signum = Function "signum" . NE.singleton
 
-  abs :: Expression -> Expression
-  abs x = mkFunction "abs" [x]
+  fromInteger :: Integer -> UnsimplifiedExpr
+  fromInteger = Number
 
-  signum :: Expression -> Expression
-  signum x = mkFunction "signum" [x]
+instance Fractional UnsimplifiedExpr where
+  (/) :: UnsimplifiedExpr -> UnsimplifiedExpr -> UnsimplifiedExpr
+  x / y = Quotient x y
 
-  fromInteger :: Integer -> Expression
-  fromInteger = mkNumber
+  fromRational :: Rational -> UnsimplifiedExpr
+  fromRational r = Fraction (numerator r) (denominator r)
 
-instance Fractional Expression where
-  (/) :: Expression -> Expression -> Expression
-  x / y = mkQuotient x y
+instance Floating UnsimplifiedExpr where
+  pi :: UnsimplifiedExpr
+  pi = Symbol "pi"
 
-  fromRational :: Rational -> Expression
-  fromRational r = mkFraction n d
-    where
-      n = numerator r
-      d = denominator r
+  exp :: UnsimplifiedExpr -> UnsimplifiedExpr
+  exp = Function "exp" . NE.singleton
 
-instance Floating Expression where
-  pi :: Expression
-  pi = mkSymbol "pi"
+  log :: UnsimplifiedExpr -> UnsimplifiedExpr
+  log = Function "log" . NE.singleton
 
-  exp :: Expression -> Expression
-  exp x = mkFunction "exp" [x]
+  (**) :: UnsimplifiedExpr -> UnsimplifiedExpr -> UnsimplifiedExpr
+  x ** y = Power x y
 
-  log :: Expression -> Expression
-  log x = mkFunction "log" [x]
+  logBase :: UnsimplifiedExpr -> UnsimplifiedExpr -> UnsimplifiedExpr
+  logBase x y = Function "logBase" (x :| [y])
 
-  sqrt :: Expression -> Expression
-  sqrt x = mkFunction "sqrt" [x]
+  sin :: UnsimplifiedExpr -> UnsimplifiedExpr
+  sin = Function "sin" . NE.singleton
 
-  (**) :: Expression -> Expression -> Expression
-  x ** y = mkPower x y
+  cos :: UnsimplifiedExpr -> UnsimplifiedExpr
+  cos = Function "cos" . NE.singleton
 
-  logBase :: Expression -> Expression -> Expression
-  logBase b x = mkFunction "logBase" [b, x]
+  asin :: UnsimplifiedExpr -> UnsimplifiedExpr
+  asin = Function "asin" . NE.singleton
 
-  sin :: Expression -> Expression
-  sin x = mkFunction "sin" [x]
+  acos :: UnsimplifiedExpr -> UnsimplifiedExpr
+  acos = Function "acos" . NE.singleton
 
-  cos :: Expression -> Expression
-  cos x = mkFunction "cos" [x]
+  atan :: UnsimplifiedExpr -> UnsimplifiedExpr
+  atan = Function "atan" . NE.singleton
 
-  tan :: Expression -> Expression
-  tan x = mkFunction "tan" [x]
+  sinh :: UnsimplifiedExpr -> UnsimplifiedExpr
+  sinh = Function "sinh" . NE.singleton
 
-  asin :: Expression -> Expression
-  asin x = mkFunction "asin" [x]
+  cosh :: UnsimplifiedExpr -> UnsimplifiedExpr
+  cosh = Function "cosh" . NE.singleton
 
-  acos :: Expression -> Expression
-  acos x = mkFunction "acos" [x]
+  asinh :: UnsimplifiedExpr -> UnsimplifiedExpr
+  asinh = Function "asinh" . NE.singleton
 
-  atan :: Expression -> Expression
-  atan x = mkFunction "atan" [x]
+  acosh :: UnsimplifiedExpr -> UnsimplifiedExpr
+  acosh = Function "acosh" . NE.singleton
 
-  sinh :: Expression -> Expression
-  sinh x = mkFunction "sinh" [x]
-
-  cosh :: Expression -> Expression
-  cosh x = mkFunction "cosh" [x]
-
-  tanh :: Expression -> Expression
-  tanh x = mkFunction "tanh" [x]
-
-  asinh :: Expression -> Expression
-  asinh x = mkFunction "asinh" [x]
-
-  acosh :: Expression -> Expression
-  acosh x = mkFunction "acosh" [x]
-
-  atanh :: Expression -> Expression
-  atanh x = mkFunction "atanh" [x]
+  atanh :: UnsimplifiedExpr -> UnsimplifiedExpr
+  atanh = Function "atanh" . NE.singleton
 
 -- ============================================================================
 -- * Pattern Synonyms
 -- ============================================================================
-pattern Pi', E' :: Expression
+pattern Pi', E', I' :: Expr s
 pattern Pi' = Symbol "pi"
 pattern E' = Symbol "e"
+pattern I' = Symbol "i"
 
-pattern (:+:), (:*:), (:-:), (:/:), (:**:), LogBase' :: Expression -> Expression -> Expression
-pattern x :+: y = Sum [x, y]
-pattern x :*: y = Product [x, y]
-pattern x :-: y = BinaryDifference x y
+pattern (:+:) :: () => Expr s -> Expr s -> Expr s
+pattern x :+: y = Sum (x :| [y])
+pattern (:*:) :: () => Expr s -> Expr s -> Expr s
+pattern x :*: y = Product (x :| [y])
+pattern (:-:) :: () => Expr s -> Expr s -> Expr s
+pattern x :-: y = BinaryDiff x y
+pattern (:/:) :: () => Expr s -> Expr s -> Expr s
 pattern x :/: y = Quotient x y
+pattern (:**:) :: () => Expr s -> Expr s -> Expr s
 pattern x :**: y = Power x y
-pattern LogBase' x y = Function "logBase" [x, y]
+pattern LogBase' :: () => Expr s -> Expr s -> Expr s
+pattern LogBase' x y = Function "logBase" (x :| [y])
 
 pattern
   Negate', Abs', Signum', Exp', Log', Sqrt',
@@ -392,154 +263,196 @@ pattern
   Asin', Acos', Atan', Acot', Asec', Acsc',
   Sinh', Cosh', Tanh', Coth', Sech', Csch',
   Asinh', Acosh', Atanh', ACoth', ASech', ACsch'
-  :: Expression -> Expression
-pattern Negate' x = Function "negate" [x]
-pattern Abs' x = Function "abs" [x]
-pattern Signum' x = Function "signum" [x]
-pattern Exp' x = Function "exp" [x]
-pattern Log' x = Function "log" [x]
-pattern Sqrt' x = Function "sqrt" [x]
-pattern Sin' x = Function "sin" [x]
-pattern Cos' x = Function "cos" [x]
-pattern Tan' x = Function "tan" [x]
-pattern Cot' x = Function "cot" [x]
-pattern Sec' x = Function "sec" [x]
-pattern Csc' x = Function "csc" [x]
-pattern Asin' x = Function "asin" [x]
-pattern Acos' x = Function "acos" [x]
-pattern Atan' x = Function "atan" [x]
-pattern Acot' x = Function "acot" [x]
-pattern Asec' x = Function "asec" [x]
-pattern Acsc' x = Function "acsc" [x]
-pattern Sinh' x = Function "sinh" [x]
-pattern Cosh' x = Function "cosh" [x]
-pattern Tanh' x = Function "tanh" [x]
-pattern Coth' x = Function "coth" [x]
-pattern Sech' x = Function "sech" [x]
-pattern Csch' x = Function "csch" [x]
-pattern Asinh' x = Function "asinh" [x]
-pattern Acosh' x = Function "acosh" [x]
-pattern Atanh' x = Function "atanh" [x]
-pattern ACoth' x = Function "acoth" [x]
-pattern ASech' x = Function "asech" [x]
-pattern ACsch' x = Function "acsch" [x]
+  :: () => Expr s -> Expr s
+pattern Negate' x = Function "negate" (x :| [])
+pattern Abs' x = Function "abs" (x :| [])
+pattern Signum' x = Function "signum" (x :| [])
+pattern Exp' x = Function "exp" (x :| [])
+pattern Log' x = Function "log" (x :| [])
+pattern Sqrt' x = Function "sqrt" (x :| [])
+pattern Sin' x = Function "sin" (x :| [])
+pattern Cos' x = Function "cos" (x :| [])
+pattern Tan' x = Function "tan" (x :| [])
+pattern Cot' x = Function "cot" (x :| [])
+pattern Sec' x = Function "sec" (x :| [])
+pattern Csc' x = Function "csc" (x :| [])
+pattern Asin' x = Function "asin" (x :| [])
+pattern Acos' x = Function "acos" (x :| [])
+pattern Atan' x = Function "atan" (x :| [])
+pattern Acot' x = Function "acot" (x :| [])
+pattern Asec' x = Function "asec" (x :| [])
+pattern Acsc' x = Function "acsc" (x :| [])
+pattern Sinh' x = Function "sinh" (x :| [])
+pattern Cosh' x = Function "cosh" (x :| [])
+pattern Tanh' x = Function "tanh" (x :| [])
+pattern Coth' x = Function "coth" (x :| [])
+pattern Sech' x = Function "sech" (x :| [])
+pattern Csch' x = Function "csch" (x :| [])
+pattern Asinh' x = Function "asinh" (x :| [])
+pattern Acosh' x = Function "acosh" (x :| [])
+pattern Atanh' x = Function "atanh" (x :| [])
+pattern ACoth' x = Function "acoth" (x :| [])
+pattern ASech' x = Function "asech" (x :| [])
+pattern ACsch' x = Function "acsch" (x :| [])
+
+-- For exporting the pattern but not the constructor
+pattern Number' :: Integer -> Expr s
+pattern Number' n <- Number n
+pattern Fraction' :: Integer -> Integer -> Expr s
+pattern Fraction' n d <- Fraction n d
+pattern Symbol' :: Text -> Expr s
+pattern Symbol' s <- Symbol s
+pattern Product' :: NonEmpty (Expr s) -> Expr s
+pattern Product' xs <- Product xs
+pattern Sum' :: NonEmpty (Expr s) -> Expr s
+pattern Sum' xs <- Sum xs
+pattern Quotient' :: Expr s -> Expr s -> Expr s
+pattern Quotient' x y <- Quotient x y
+pattern Power' :: Expr s -> Expr s -> Expr s
+pattern Power' x y <- Power x y
+pattern Function' :: Text -> NonEmpty (Expr s) -> Expr s
+pattern Function' name args <- Function name args
+pattern Factorial' :: Expr s -> Expr s
+pattern Factorial' x <- Factorial x
+pattern UnaryDiff' :: Expr s -> Expr s
+pattern UnaryDiff' x <- UnaryDiff x
+pattern BinaryDiff' :: Expr s -> Expr s -> Expr s
+pattern BinaryDiff' x y <- BinaryDiff x y
+
+{-# COMPLETE
+  Number', Fraction', Symbol',
+  Product', Sum', Quotient', Power',
+  Function', Factorial',
+  UnaryDiff', BinaryDiff'
+  #-}
+
+-- ============================================================================
+-- * Smart Constructors
+-- ============================================================================
+
+mkNumber :: Integer -> Expr a
+mkNumber = Number
+
+mkFraction :: Integer -> Integer -> UnsimplifiedExpr
+mkFraction = Fraction
+
+mkSymbol :: Text -> Expr a
+mkSymbol = Symbol
+
+mkProduct :: NonEmpty (Expr s) -> UnsimplifiedExpr
+mkProduct = coerce Product
+
+mkSum :: NonEmpty (Expr s) -> UnsimplifiedExpr
+mkSum = coerce Sum
+
+mkQuotient :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkQuotient = coerce Quotient
+
+mkPower :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkPower = coerce Power
+
+mkFunction :: Text -> NonEmpty (Expr s) -> Expr s
+mkFunction = Function
+
+mkFactorial :: Expr s -> UnsimplifiedExpr
+mkFactorial = coerce Factorial
+
+mkUnaryDiff :: Expr s -> UnsimplifiedExpr
+mkUnaryDiff = coerce UnaryDiff
+
+mkBinaryDiff :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkBinaryDiff =  coerce BinaryDiff
+
 -- ============================================================================
 -- * Helper Functions
 -- ============================================================================
-getPowerBase :: Expression -> ExpressionResult Expression
-getPowerBase = \case
-  u@(Symbol _) -> return u
-  u@(Product _) -> return u
-  u@(Sum _) -> return u
-  u@(Factorial _) -> return u
-  u@(Function _ _) -> return u
 
-  (Power b _) -> return b
+-- | Check if expression is a constant (number or fraction)
+isConstant :: Expr s -> Bool
+isConstant (Number _)     = True
+isConstant (Fraction _ _) = True
+isConstant _              = False
 
-  u@(Number _) -> throwError $
-    UnsupportedOperation "Power base cannot be a number" u
-  u@(Fraction _ _) -> throwError $
-    UnsupportedOperation "Power base cannot be a fraction" u
+-- Check if expression is atomic (a constant, symbol, or number)
+isAtomic :: Expr s -> Bool
+isAtomic (Number _)     = True
+isAtomic (Fraction _ _) = True
+isAtomic (Symbol _)     = True
+isAtomic _              = False
 
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for power base extraction, only \
-    \a symbol, product, sum, factorial or function is expected." u
+isNumber :: Expr s -> Bool
+isNumber (Number _) = True
+isNumber _          = False
 
-getPowerExponent :: Expression -> ExpressionResult Expression
-getPowerExponent = \case
-  (Symbol _) -> return 1
-  (Product _) -> return 1
-  (Sum _) -> return 1
-  (Factorial _) -> return 1
-  (Function _ _) -> return 1
+isFraction :: Expr s -> Bool
+isFraction (Fraction _ _) = True
+isFraction _              = False
 
-  (Power _ e) -> return e
+isSymbol :: Expr s -> Bool
+isSymbol (Symbol _) = True
+isSymbol _          = False
 
-  u@(Number _) -> throwError $
-    UnsupportedOperation "Power exponent cannot be a number" u
-  u@(Fraction _ _) -> throwError $
-    UnsupportedOperation "Power exponent cannot be a fraction" u
+isFunction :: Expr s -> Bool
+isFunction (Function _ _) = True
+isFunction _              = False
 
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for power exponent extraction, only \
-    \a symbol, product, sum, factorial or function is expected." u
+isProduct :: Expr s -> Bool
+isProduct (Product _) = True
+isProduct _           = False
 
-getTerm :: Expression -> ExpressionResult Expression
-getTerm = \case
-  u@(Symbol _) -> return $ mkProduct [u]
-  u@(Sum _) -> return $ mkProduct [u]
-  u@(Power _ _) -> return $ mkProduct [u]
-  u@(Factorial _) -> return $ mkProduct [u]
-  u@(Function _ _) -> return $ mkProduct [u]
-  u@(Product (x NE.:| xs)) -> return $ if isConstant x then mkProduct xs else u
+isSum :: Expr s -> Bool
+isSum (Sum _) = True
+isSum _       = False
 
-  u@(Number _) -> throwError $
-    UnsupportedOperation "Cannot extract term from a number" u
-  u@(Fraction _ _) -> throwError $
-    UnsupportedOperation "Cannot extract term from a fraction" u
+isQuotient :: Expr s -> Bool
+isQuotient (Quotient _ _) = True
+isQuotient _              = False
 
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for term extraction, only \
-    \a number, fraction, symbol, product, sum, difference, quotient, \
-    \power, factorial or function is expected." u
+isPower :: Expr s -> Bool
+isPower (Power _ _) = True
+isPower _           = False
 
-getConst :: Expression -> ExpressionResult Expression
-getConst = \case
-  Symbol _ -> return 1
-  Sum _ -> return 1
-  Power _ _ -> return 1
-  Factorial _ -> return 1
-  Function _ _ -> return 1
-  Product (x NE.:| _) -> return $ if isConstant x then x else 1
+isFactorial :: Expr s -> Bool
+isFactorial (Factorial _) = True
+isFactorial _             = False
 
-  u@(Number _) -> throwError $
-    UnsupportedOperation "Cannot extract constant from a number" u
-  u@(Fraction _ _) -> throwError $
-    UnsupportedOperation "Cannot extract constant from a fraction" u
+isUnaryDiff :: Expr s -> Bool
+isUnaryDiff (UnaryDiff _) = True
+isUnaryDiff _             = False
 
-  u -> throwError $ UnsupportedOperation
-    "Unsupported expression type for constant extraction, only \
-    \a number, fraction, symbol, product, sum, difference, quotient, \
-    \power, factorial or function is expected." u
+isBinaryDiff :: Expr s -> Bool
+isBinaryDiff (BinaryDiff _ _) = True
+isBinaryDiff _                = False
 
-getUnaryFunction :: (Floating a) => Expression -> Maybe (a -> a)
-getUnaryFunction = \case
-  Negate' _ -> Just negate
-  Abs' _   -> Just abs
-  Signum' _ -> Just signum
-  Exp' _    -> Just exp
-  Log' _    -> Just log
-  Sqrt' _   -> Just sqrt
-  Sin' _    -> Just sin
-  Cos' _    -> Just cos
-  Tan' _    -> Just tan
-  Asin' _   -> Just asin
-  Acos' _   -> Just acos
-  Atan' _   -> Just atan
-  Sinh' _   -> Just sinh
-  Cosh' _   -> Just cosh
-  Tanh' _   -> Just tanh
-  Asinh' _  -> Just asinh
-  Acosh' _  -> Just acosh
-  Atanh' _  -> Just atanh
-  _         -> Nothing
+getOperands :: Expr s -> [Expr s]
+getOperands (Number _)        = []
+getOperands (Fraction _ _)    = []
+getOperands (Symbol _)        = []
+getOperands (Product xs)      = NE.toList xs
+getOperands (Sum xs)          = NE.toList xs
+getOperands (Quotient x y)    = [x, y]
+getOperands (Power x y)       = [x, y]
+getOperands (Function _ args) = NE.toList args
+getOperands (Factorial x)     = [x]
+getOperands (UnaryDiff x)     = [x]
+getOperands (BinaryDiff x y)  = [x, y]
 
-getBinaryFunction :: (Floating a) => Expression -> Maybe (a -> a -> a)
-getBinaryFunction = \case
-  _ :+: _ -> Just (+)
-  _ :-: _ -> Just (-)
-  _ :*: _ -> Just (*)
-  _ :/: _ -> Just (/)
-  _ :**: _ -> Just (**)
-  _ -> Nothing
+-- ============================================================================
+-- * Simplification Framework
+-- ============================================================================
 
-getOperands :: Expression -> Operands
-getOperands (Product xs)           = xs
-getOperands (Sum xs)               = xs
-getOperands (Quotient n d)         = [n, d]
-getOperands (UnaryDifference x)    = [x]
-getOperands (BinaryDifference x y) = [x, y]
-getOperands (Power x y)            = [x, y]
-getOperands (Factorial x)          = [x]
-getOperands (Function _ args)      = args
-getOperands _                      = []
+data SimplificationState
+  = Simplified
+  | Unsimplified
+
+class Simplify expr where
+  type Simplification expr
+  simplify :: expr -> EvalResult (Simplification expr)
+
+unsimplify :: Expr a -> UnsimplifiedExpr
+unsimplify = coerce
+
+-- instance Simplify UnsimplifiedExpr where
+--   type Simplification UnsimplifiedExpr = SimplifiedExpr
+--   simplify :: UnsimplifiedExpr -> EvalResult SimplifiedExpr
+--   simplify expr = Right (unsafeCoerce expr) -- Placeholder implementation

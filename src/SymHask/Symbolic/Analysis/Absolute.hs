@@ -4,7 +4,7 @@ module SymHask.Symbolic.Analysis.Absolute
     ( absExpr
     ) where
 
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Analysis.LinearForm (LinearForm (..),
                                                        linearForm)
 import           SymHask.Symbolic.Simplification

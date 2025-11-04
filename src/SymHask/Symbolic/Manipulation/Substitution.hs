@@ -16,7 +16,7 @@ module SymHask.Symbolic.Manipulation.Substitution
 
 import           Data.List                            (foldl')
 import qualified Data.List.NonEmpty                   as NE
-import           SymHask.Core.Expression
+import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification ()
 
 -- ============================================================================
