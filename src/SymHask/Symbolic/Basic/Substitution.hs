@@ -6,7 +6,6 @@ module SymHask.Symbolic.Basic.Substitution
     , Replacement (..)
       -- * With Simplification
     , concurSubs
-    , seqSubs
     , subs
       -- * Structural Substitution (Based on the AST)
     -- , concurSubsStruct
@@ -36,37 +35,37 @@ newtype Replacement a
 -- * Semantic Substitution (Simplified Only)
 -- ============================================================================
 
--- | Substitution with simplification
-subs
-  :: (Pattern SimplifiedExpr, Replacement SimplifiedExpr)
-  -> SimplifiedExpr
-  -> EvalResult SimplifiedExpr
-subs
-  (unsimplify . unPattern -> pat, unsimplify . unReplacement -> repl)
-  (unsimplify -> expr) =
-    simplify $ subsImpl (Pattern pat, Replacement repl) expr
+-- -- | Substitution with simplification
+-- subs
+--   :: (Pattern SimplifiedExpr, Replacement SimplifiedExpr)
+--   -> SimplifiedExpr
+--   -> EvalResult SimplifiedExpr
+-- subs
+--   (unsimplify . unPattern -> pat, unsimplify . unReplacement -> repl)
+--   (unsimplify -> expr) =
+--     simplify $ subsImpl (Pattern pat, Replacement repl) expr
 
 
-seqSubs
-  :: [(Pattern SimplifiedExpr, Replacement SimplifiedExpr)]
-  -> SimplifiedExpr
-  -> EvalResult SimplifiedExpr
-seqSubs [] expr = pure expr
-seqSubs ((p, r) : rest) expr = do
-  result <- subs (p, r) expr
-  seqSubs rest result
+-- seqSubs
+--   :: [(Pattern SimplifiedExpr, Replacement SimplifiedExpr)]
+--   -> SimplifiedExpr
+--   -> EvalResult SimplifiedExpr
+-- seqSubs [] expr = pure expr
+-- seqSubs ((p, r) : rest) expr = do
+--   result <- subs (p, r) expr
+--   seqSubs rest result
 
--- | Concurrent semantic substitution (with simplification)
-concurSubs
-  :: [(Pattern SimplifiedExpr, Replacement SimplifiedExpr)]
-  -> SimplifiedExpr
-  -> EvalResult SimplifiedExpr
-concurSubs equations (unsimplify -> expr) = do
-  let structuralEquations = [(Pattern (unsimplify $ unPattern p),
-                             Replacement (unsimplify $ unReplacement r))
-                            | (p, r) <- equations]
-  let result = concurSubsImpl structuralEquations expr
-  simplify result
+-- -- | Concurrent semantic substitution (with simplification)
+-- concurSubs
+--   :: [(Pattern SimplifiedExpr, Replacement SimplifiedExpr)]
+--   -> SimplifiedExpr
+--   -> EvalResult SimplifiedExpr
+-- concurSubs equations (unsimplify -> expr) = do
+--   let structuralEquations = [(Pattern (unsimplify $ unPattern p),
+--                              Replacement (unsimplify $ unReplacement r))
+--                             | (p, r) <- equations]
+--   let result = concurSubsImpl structuralEquations expr
+--   simplify result
 
 -- ============================================================================
 -- * Structural Substitution (Unrestricted)
@@ -99,8 +98,8 @@ concurSubs equations (unsimplify -> expr) = do
 -- * Implementation (Internal)
 -- ============================================================================
 
-subsImpl :: (Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr) -> UnsimplifiedExpr -> UnsimplifiedExpr
-subsImpl equation@(Pattern pat, Replacement repl) expr
+subs :: (Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr) -> UnsimplifiedExpr -> UnsimplifiedExpr
+subs equation@(Pattern pat, Replacement repl) expr
   | expr == pat = repl
   | otherwise = case expr of
     Number' n            -> mkNumber n
@@ -115,15 +114,15 @@ subsImpl equation@(Pattern pat, Replacement repl) expr
     Factorial' x         -> mkFactorial (recurse x)
     Function' fname args -> mkFunction fname (NE.map recurse args)
   where
-    recurse = subsImpl equation
+    recurse = subs equation
 
 
 -- | Internal implementation of concurrent substitution
-concurSubsImpl
+concurSubs
   :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]
   -> UnsimplifiedExpr
   -> UnsimplifiedExpr
-concurSubsImpl equations expr =
+concurSubs equations expr =
   -- First, check if the entire expression matches any pattern
   case findMatchingReplacement expr equations of
     Just replacement -> replacement
@@ -133,16 +132,16 @@ concurSubsImpl equations expr =
         Number' n            -> mkNumber n
         Fraction' n d        -> mkFraction n d
         Symbol' s            -> mkSymbol s
-        Product' xs          -> mkProduct $ NE.map (concurSubsImpl equations) xs
-        Sum' xs              -> mkSum $ NE.map (concurSubsImpl equations) xs
+        Product' xs          -> mkProduct $ NE.map (concurSubs equations) xs
+        Sum' xs              -> mkSum $ NE.map (concurSubs equations) xs
         Quotient' n d        -> mkQuotient (recurse n) (recurse d)
         UnaryDiff' x         -> mkUnaryDiff (recurse x)
         BinaryDiff' x y      -> mkBinaryDiff (recurse x) (recurse y)
         Power' x y           -> mkPower (recurse x) (recurse y)
         Factorial' x         -> mkFactorial (recurse x)
-        Function' fname args -> mkFunction fname (NE.map (concurSubsImpl equations) args)
+        Function' fname args -> mkFunction fname (NE.map (concurSubs equations) args)
   where
-    recurse = concurSubsImpl equations
+    recurse = concurSubs equations
 
 -- | Find the first matching replacement for an expression
 findMatchingReplacement

@@ -4,7 +4,8 @@
 module SymHask.Symbolic.Basic
     ( FunctionParity (..)
     , LinearForm (..)
-    , module SymHask.Symbolic.Basic.Substitution
+    , Substitution.Pattern (..)
+    , Substitution.Replacement (..)
     , completeSubExprs
     , evalAbs
     , evalMax
@@ -16,6 +17,9 @@ module SymHask.Symbolic.Basic
     , separateFactors
     , symbols
     , treeSize
+    , subs
+    , seqSubs
+    , concurSubs
     ) where
 
 import           Control.Monad
@@ -24,7 +28,7 @@ import qualified Data.HashSet                        as HS
 import qualified Data.List.NonEmpty                  as NE
 import           Data.Text                           (Text)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic.Substitution
+import qualified SymHask.Symbolic.Basic.Substitution as Substitution
 import           SymHask.Symbolic.Basic.Utils
 import           SymHask.Symbolic.Simplification
 
@@ -102,7 +106,7 @@ evenOdd :: SimplifiedExpr -> Text -> EvalResult FunctionParity
 evenOdd expr x = do
   negX <- simplify (negate (mkSymbol x) :: UnsimplifiedExpr)
   substituted <- subs
-    (Pattern (mkSymbol x), Replacement negX)
+    (Substitution.Pattern (mkSymbol x), Substitution.Replacement negX)
     expr
   if
     | expr .-. substituted == pure (mkNumber 0) -> return EvenFunc
@@ -251,3 +255,37 @@ linearForm expr (mkSymbol -> x)
         _                    -> pure Nothing
     analyseSum _ _ = throwError $ UnsupportedOperation
       "linearForm: analyseSum called with non-sum expression"
+
+subs
+  :: (Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr)
+  -> SimplifiedExpr
+  -> EvalResult SimplifiedExpr
+subs
+  (unsimplify . Substitution.unPattern -> pat, unsimplify . Substitution.unReplacement -> repl)
+  (unsimplify -> expr) =
+    simplify $ Substitution.subs
+      ( Substitution.Pattern pat
+      , Substitution.Replacement repl
+      ) expr
+
+seqSubs
+  :: [(Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr)]
+  -> SimplifiedExpr
+  -> EvalResult SimplifiedExpr
+seqSubs [] expr = pure expr
+seqSubs ((p, r) : rest) expr = do
+  result <- subs (p, r) expr
+  seqSubs rest result
+
+concurSubs
+  :: [(Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr)]
+  -> SimplifiedExpr
+  -> EvalResult SimplifiedExpr
+concurSubs equations (unsimplify -> expr) = do
+  let structuralEquations = [(Substitution.Pattern (unsimplify $ Substitution.unPattern p),
+                             Substitution.Replacement (unsimplify $ Substitution.unReplacement r))
+                            | (p, r) <- equations]
+  let result = Substitution.concurSubs structuralEquations expr
+  simplify result
+
+
