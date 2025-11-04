@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf            #-}
@@ -9,7 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module SymHask.Symbolic.Simplification.AutomaticSimplification
-    (
+    ( automaticSimplify
     ) where
 
 import           Control.Monad.Error.Class                           (throwError)
@@ -20,7 +19,7 @@ import           Data.Text                                           (Text)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                       toStandardRNE)
-import Data.Coerce
+
 
 
 -- ============================================================================
@@ -306,7 +305,7 @@ simplifyFactorial _ = throwError $ UnsupportedOperation "Expected a Factorial ex
 -- ============================================================================
 -- * Simplification of Functions
 -- ============================================================================
-simplifyFunction :: Text -> NonEmpty (Expr s) -> EvalResult UnsimplifiedExpr
+simplifyFunction :: Text -> NonEmpty (Expr a) -> EvalResult UnsimplifiedExpr
 simplifyFunction fname args = do
   args' <- traverse automaticSimplify args
   return $ mkFunction fname args'
@@ -457,17 +456,3 @@ getConst = \case
     UnsupportedOperation "Cannot extract constant from fraction"
   _ -> throwError $
     UnsupportedOperation "Cannot extract constant from this expression"
-
--- ===========================================================================
--- * Simplifiable Instances
--- ===========================================================================
-
-instance Simplify UnsimplifiedExpr where
-  type Simplification UnsimplifiedExpr = SimplifiedExpr
-  simplify :: UnsimplifiedExpr -> EvalResult SimplifiedExpr
-  simplify =  coerce automaticSimplify
-
-instance Simplify SimplifiedExpr where
-  type Simplification SimplifiedExpr = SimplifiedExpr
-  simplify :: SimplifiedExpr -> EvalResult SimplifiedExpr
-  simplify = pure

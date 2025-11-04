@@ -9,12 +9,11 @@ module SymHask.Symbolic.Basic.Substitution
     , seqSubs
     , subs
       -- * Structural Substitution (Based on the AST)
-    , concurSubsStruct
-    , seqSubsStruct
-    , subsStruct
+    -- , concurSubsStruct
+    -- , seqSubsStruct
+    -- , subsStruct
     ) where
 
-import           Data.List                            (foldl')
 import qualified Data.List.NonEmpty                   as NE
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification ()
@@ -73,28 +72,28 @@ concurSubs equations (unsimplify -> expr) = do
 -- * Structural Substitution (Unrestricted)
 -- ============================================================================
 
--- | Structural substitution - exact pattern matching
-subsStruct :: (Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr) -> UnsimplifiedExpr -> UnsimplifiedExpr
-subsStruct = subsImpl
+-- -- | Structural substitution - exact pattern matching
+-- subsStruct :: (Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr) -> UnsimplifiedExpr -> UnsimplifiedExpr
+-- subsStruct = subsImpl
 
--- | Multiple structural substitutions
-seqSubsStruct
-  :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]
-  -> UnsimplifiedExpr
-  -> UnsimplifiedExpr
-seqSubsStruct rest expr = foldl' (flip subsStruct) expr rest
+-- -- | Multiple structural substitutions
+-- seqSubsStruct
+--   :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]
+--   -> UnsimplifiedExpr
+--   -> UnsimplifiedExpr
+-- seqSubsStruct rest expr = foldl' (flip subsStruct) expr rest
 
--- | Concurrent structural substitution - all patterns matched against original expression
---
--- Given expression u and set S = {t1 = r1, t2 = r2, ..., tn = rn},
--- recursively search through u and for each sub-expression v:
--- if v is identical to some ti, substitute ri for v.
--- All substitutions happen based on the original expression structure.
-concurSubsStruct
-  :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]  -- ^ Set S of equations {ti = ri}
-  -> UnsimplifiedExpr                                   -- ^ Expression u
-  -> UnsimplifiedExpr
-concurSubsStruct = concurSubsImpl
+-- -- | Concurrent structural substitution - all patterns matched against original expression
+-- --
+-- -- Given expression u and set S = {t1 = r1, t2 = r2, ..., tn = rn},
+-- -- recursively search through u and for each sub-expression v:
+-- -- if v is identical to some ti, substitute ri for v.
+-- -- All substitutions happen based on the original expression structure.
+-- concurSubsStruct
+--   :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]  -- ^ Set S of equations {ti = ri}
+--   -> UnsimplifiedExpr                                   -- ^ Expression u
+--   -> UnsimplifiedExpr
+-- concurSubsStruct = concurSubsImpl
 
 -- ============================================================================
 -- * Implementation (Internal)
@@ -147,9 +146,9 @@ concurSubsImpl equations expr =
 
 -- | Find the first matching replacement for an expression
 findMatchingReplacement
-  :: Expr s
-  -> [(Pattern (Expr s), Replacement (Expr s))]
-  -> Maybe (Expr s)
+  :: Expr a
+  -> [(Pattern (Expr a), Replacement (Expr a))]
+  -> Maybe (Expr a)
 findMatchingReplacement _ [] = Nothing
 findMatchingReplacement expr ((Pattern pat, Replacement repl):rest)
   | expr == pat = Just repl

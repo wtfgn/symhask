@@ -11,6 +11,7 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 
 module SymHask.Symbolic
@@ -47,6 +48,7 @@ module SymHask.Symbolic
     , isSum
     , isSymbol
     , isUnaryDiff
+    , isNumerical
       -- Constructors and pattern synonyms for easy expression building
     , mkBinaryDiff
     , mkFactorial
@@ -59,6 +61,7 @@ module SymHask.Symbolic
     , mkSum
     , mkSymbol
     , mkUnaryDiff
+    , mkMax
     , pattern (:**:)
     , pattern (:*:)
     , pattern (:+:)
@@ -85,8 +88,10 @@ module SymHask.Symbolic
     , pattern Csch'
     , pattern E'
     , pattern Exp'
+    , pattern I'
     , pattern Log'
     , pattern LogBase'
+    , pattern Max'
     , pattern Negate'
     , pattern Pi'
     , pattern Sec'
@@ -97,7 +102,6 @@ module SymHask.Symbolic
     , pattern Sqrt'
     , pattern Tan'
     , pattern Tanh'
-    , pattern I'
       -- Simplification framework
     , SimplificationState (..)
     , Simplify (..)
@@ -107,6 +111,7 @@ module SymHask.Symbolic
 import           Control.DeepSeq    (NFData)
 import           Data.Coerce        (coerce)
 import           Data.Hashable      (Hashable)
+import qualified Data.HashSet       as HS
 import           Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import           Data.Ratio         (denominator, numerator)
@@ -138,30 +143,30 @@ type EvalResult a = Either ExprError a
 type UnsimplifiedExpr = Expr 'Unsimplified
 type SimplifiedExpr = Expr 'Simplified
 
-data Expr (s :: SimplificationState)
+data Expr (a :: SimplificationState)
   -- Basic atomic expressions
   = Number Integer
   | Fraction Integer Integer
   | Symbol Text
   -- Compound algebraic expressions
-  | Product (NonEmpty (Expr s))
-  | Sum (NonEmpty (Expr s))
-  | Quotient (Expr s) (Expr s)
-  | Power (Expr s) (Expr s)
+  | Product (NonEmpty (Expr a))
+  | Sum (NonEmpty (Expr a))
+  | Quotient (Expr a) (Expr a)
+  | Power (Expr a) (Expr a)
   -- Advanced expressions
-  | Function Text (NonEmpty (Expr s))
-  | Factorial (Expr s)
+  | Function Text (NonEmpty (Expr a))
+  | Factorial (Expr a)
   -- Differences (eliminated during simplification)
-  | UnaryDiff (Expr s)
-  | BinaryDiff (Expr s) (Expr s)
+  | UnaryDiff (Expr a)
+  | BinaryDiff (Expr a) (Expr a)
   deriving (Eq, Generic, Hashable, NFData, Read, Show)
   deriving (TextShow)
-    via FromGeneric (Expr s)
+    via FromGeneric (Expr a)
 -- ============================================================================
 -- * Type Class Instances
 -- ============================================================================
-instance IsString (Expr s) where
-  fromString :: String -> Expr s
+instance IsString (Expr a) where
+  fromString :: String -> Expr a
   fromString = Symbol . T.pack
 
 instance Num UnsimplifiedExpr where
@@ -239,22 +244,22 @@ instance Floating UnsimplifiedExpr where
 -- ============================================================================
 -- * Pattern Synonyms
 -- ============================================================================
-pattern Pi', E', I' :: Expr s
+pattern Pi', E', I' :: Expr a
 pattern Pi' = Symbol "pi"
 pattern E' = Symbol "e"
 pattern I' = Symbol "i"
 
-pattern (:+:) :: () => Expr s -> Expr s -> Expr s
+pattern (:+:) :: () => Expr a -> Expr a -> Expr a
 pattern x :+: y = Sum (x :| [y])
-pattern (:*:) :: () => Expr s -> Expr s -> Expr s
+pattern (:*:) :: () => Expr a -> Expr a -> Expr a
 pattern x :*: y = Product (x :| [y])
-pattern (:-:) :: () => Expr s -> Expr s -> Expr s
+pattern (:-:) :: () => Expr a -> Expr a -> Expr a
 pattern x :-: y = BinaryDiff x y
-pattern (:/:) :: () => Expr s -> Expr s -> Expr s
+pattern (:/:) :: () => Expr a -> Expr a -> Expr a
 pattern x :/: y = Quotient x y
-pattern (:**:) :: () => Expr s -> Expr s -> Expr s
+pattern (:**:) :: () => Expr a -> Expr a -> Expr a
 pattern x :**: y = Power x y
-pattern LogBase' :: () => Expr s -> Expr s -> Expr s
+pattern LogBase' :: () => Expr a -> Expr a -> Expr a
 pattern LogBase' x y = Function "logBase" (x :| [y])
 
 pattern
@@ -263,7 +268,7 @@ pattern
   Asin', Acos', Atan', Acot', Asec', Acsc',
   Sinh', Cosh', Tanh', Coth', Sech', Csch',
   Asinh', Acosh', Atanh', ACoth', ASech', ACsch'
-  :: () => Expr s -> Expr s
+  :: () => Expr a -> Expr a
 pattern Negate' x = Function "negate" (x :| [])
 pattern Abs' x = Function "abs" (x :| [])
 pattern Signum' x = Function "signum" (x :| [])
@@ -296,28 +301,31 @@ pattern ASech' x = Function "asech" (x :| [])
 pattern ACsch' x = Function "acsch" (x :| [])
 
 -- For exporting the pattern but not the constructor
-pattern Number' :: Integer -> Expr s
+pattern Number' :: Integer -> Expr a
 pattern Number' n <- Number n
-pattern Fraction' :: Integer -> Integer -> Expr s
+pattern Fraction' :: Integer -> Integer -> Expr a
 pattern Fraction' n d <- Fraction n d
-pattern Symbol' :: Text -> Expr s
+pattern Symbol' :: Text -> Expr a
 pattern Symbol' s <- Symbol s
-pattern Product' :: NonEmpty (Expr s) -> Expr s
+pattern Product' :: NonEmpty (Expr a) -> Expr a
 pattern Product' xs <- Product xs
-pattern Sum' :: NonEmpty (Expr s) -> Expr s
+pattern Sum' :: NonEmpty (Expr a) -> Expr a
 pattern Sum' xs <- Sum xs
-pattern Quotient' :: Expr s -> Expr s -> Expr s
+pattern Quotient' :: Expr a -> Expr a -> Expr a
 pattern Quotient' x y <- Quotient x y
-pattern Power' :: Expr s -> Expr s -> Expr s
+pattern Power' :: Expr a -> Expr a -> Expr a
 pattern Power' x y <- Power x y
-pattern Function' :: Text -> NonEmpty (Expr s) -> Expr s
+pattern Function' :: Text -> NonEmpty (Expr a) -> Expr a
 pattern Function' name args <- Function name args
-pattern Factorial' :: Expr s -> Expr s
+pattern Factorial' :: Expr a -> Expr a
 pattern Factorial' x <- Factorial x
-pattern UnaryDiff' :: Expr s -> Expr s
+pattern UnaryDiff' :: Expr a -> Expr a
 pattern UnaryDiff' x <- UnaryDiff x
-pattern BinaryDiff' :: Expr s -> Expr s -> Expr s
+pattern BinaryDiff' :: Expr a -> Expr a -> Expr a
 pattern BinaryDiff' x y <- BinaryDiff x y
+
+pattern Max' :: HS.HashSet SimplifiedExpr -> SimplifiedExpr
+pattern Max' exprSet <- Function' "max" (NE.toList -> (HS.fromList -> exprSet))
 
 {-# COMPLETE
   Number', Fraction', Symbol',
@@ -325,7 +333,6 @@ pattern BinaryDiff' x y <- BinaryDiff x y
   Function', Factorial',
   UnaryDiff', BinaryDiff'
   #-}
-
 -- ============================================================================
 -- * Smart Constructors
 -- ============================================================================
@@ -339,90 +346,109 @@ mkFraction = Fraction
 mkSymbol :: Text -> Expr a
 mkSymbol = Symbol
 
-mkProduct :: NonEmpty (Expr s) -> UnsimplifiedExpr
+mkProduct :: NonEmpty (Expr a) -> UnsimplifiedExpr
 mkProduct = coerce Product
 
-mkSum :: NonEmpty (Expr s) -> UnsimplifiedExpr
+mkSum :: NonEmpty (Expr a) -> UnsimplifiedExpr
 mkSum = coerce Sum
 
-mkQuotient :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkQuotient :: Expr a -> Expr a' -> UnsimplifiedExpr
 mkQuotient = coerce Quotient
 
-mkPower :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkPower :: Expr a -> Expr a' -> UnsimplifiedExpr
 mkPower = coerce Power
 
-mkFunction :: Text -> NonEmpty (Expr s) -> Expr s
+mkFunction :: Text -> NonEmpty (Expr a) -> Expr a
 mkFunction = Function
 
-mkFactorial :: Expr s -> UnsimplifiedExpr
+mkFactorial :: Expr a -> UnsimplifiedExpr
 mkFactorial = coerce Factorial
 
-mkUnaryDiff :: Expr s -> UnsimplifiedExpr
+mkUnaryDiff :: Expr a -> UnsimplifiedExpr
 mkUnaryDiff = coerce UnaryDiff
 
-mkBinaryDiff :: Expr s -> Expr s' -> UnsimplifiedExpr
+mkBinaryDiff :: Expr a -> Expr a' -> UnsimplifiedExpr
 mkBinaryDiff =  coerce BinaryDiff
+
+mkMax :: HS.HashSet SimplifiedExpr -> SimplifiedExpr
+mkMax exprSet = mkFunction "max" (NE.fromList (HS.toList exprSet))
 
 -- ============================================================================
 -- * Helper Functions
 -- ============================================================================
 
 -- | Check if expression is a constant (number or fraction)
-isConstant :: Expr s -> Bool
+isConstant :: Expr a -> Bool
 isConstant (Number _)     = True
 isConstant (Fraction _ _) = True
 isConstant _              = False
 
 -- Check if expression is atomic (a constant, symbol, or number)
-isAtomic :: Expr s -> Bool
+isAtomic :: Expr a -> Bool
 isAtomic (Number _)     = True
 isAtomic (Fraction _ _) = True
 isAtomic (Symbol _)     = True
 isAtomic _              = False
 
-isNumber :: Expr s -> Bool
+isNumber :: Expr a -> Bool
 isNumber (Number _) = True
 isNumber _          = False
 
-isFraction :: Expr s -> Bool
+isFraction :: Expr a -> Bool
 isFraction (Fraction _ _) = True
 isFraction _              = False
 
-isSymbol :: Expr s -> Bool
+isSymbol :: Expr a -> Bool
 isSymbol (Symbol _) = True
 isSymbol _          = False
 
-isFunction :: Expr s -> Bool
+isFunction :: Expr a -> Bool
 isFunction (Function _ _) = True
 isFunction _              = False
 
-isProduct :: Expr s -> Bool
+isProduct :: Expr a -> Bool
 isProduct (Product _) = True
 isProduct _           = False
 
-isSum :: Expr s -> Bool
+isSum :: Expr a -> Bool
 isSum (Sum _) = True
 isSum _       = False
 
-isQuotient :: Expr s -> Bool
+isQuotient :: Expr a -> Bool
 isQuotient (Quotient _ _) = True
 isQuotient _              = False
 
-isPower :: Expr s -> Bool
+isPower :: Expr a -> Bool
 isPower (Power _ _) = True
 isPower _           = False
 
-isFactorial :: Expr s -> Bool
+isFactorial :: Expr a -> Bool
 isFactorial (Factorial _) = True
 isFactorial _             = False
 
-isUnaryDiff :: Expr s -> Bool
+isUnaryDiff :: Expr a -> Bool
 isUnaryDiff (UnaryDiff _) = True
 isUnaryDiff _             = False
 
-isBinaryDiff :: Expr s -> Bool
+isBinaryDiff :: Expr a -> Bool
 isBinaryDiff (BinaryDiff _ _) = True
 isBinaryDiff _                = False
+
+isNumerical :: SimplifiedExpr -> Bool
+isNumerical = \case
+  Number' _     -> True
+  Fraction' _ _ -> True
+  Pi'         -> True
+  E'         -> True
+  Symbol' _     -> False
+  Quotient' n d  -> isNumerical n && isNumerical d
+  UnaryDiff' x   -> isNumerical x
+  BinaryDiff' x y -> isNumerical x && isNumerical y
+  Product' factors    -> all isNumerical factors
+  Sum' terms        -> all isNumerical terms
+  Power' b e -> isNumerical b && isNumerical e
+  Factorial' expr  -> isNumerical expr
+  Function' _ args -> all isNumerical args
 
 -- ============================================================================
 -- * Simplification Framework

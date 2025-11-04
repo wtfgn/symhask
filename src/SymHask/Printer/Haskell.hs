@@ -9,7 +9,7 @@ import           SymHask.Symbolic
 import           TextShow              (showt)
 
 -- | Convert an expression to a Haskell expression
-toHaskell :: Expr s -> Text
+toHaskell :: Expr a -> Text
 toHaskell = \case
   Number' n -> showt n
   Symbol' s -> s
@@ -44,7 +44,7 @@ toHaskell = \case
 
 -- | Show numbers and symbols as is, while surrounding everything
 -- else in parentheses.
-asArg :: Expr s -> Text
+asArg :: Expr a -> Text
 asArg x@(Number' n)
   | n >= 0 = toHaskell x
   | otherwise = "(" <> toHaskell x <> ")"
@@ -52,7 +52,7 @@ asArg x@(Symbol' _) = toHaskell x
 asArg x = par $ toHaskell x
 
 -- | Converts an 'Expression' to an argument appropriate for addition.
-asAddArg :: Expr s -> Text
+asAddArg :: Expr a -> Text
 asAddArg x@(Number' _) = asArg x
 asAddArg x@(Symbol' _) = asArg x
 -- No operation has lower precedence than addition,
@@ -60,7 +60,7 @@ asAddArg x@(Symbol' _) = asArg x
 asAddArg x             = toHaskell x
 
 -- | Converts an 'Expression' to an argument appropriate for multiplication.
-asMultiplyArg :: Expr s -> Text
+asMultiplyArg :: Expr a -> Text
 asMultiplyArg x@(Number' _)       = asArg x
 asMultiplyArg x@(Symbol' _)       = asArg x
 asMultiplyArg x@(Sum' _)          = par $ toHaskell x

@@ -30,10 +30,9 @@ library
       SymHask.Printer.Haskell
       SymHask.Symbolic
       SymHask.Symbolic.Basic
-      SymHask.Symbolic.Basic.Absolute
-      SymHask.Symbolic.Basic.LinearForm
-      SymHask.Symbolic.Basic.Max
       SymHask.Symbolic.Basic.Substitution
+      SymHask.Symbolic.Basic.Utils
+      SymHask.Symbolic.Calculus
       SymHask.Symbolic.Calculus.Differentiation
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
