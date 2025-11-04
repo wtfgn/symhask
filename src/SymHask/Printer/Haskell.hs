@@ -1,7 +1,4 @@
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DataKinds       #-}
-
-module SymHask.Display.Haskell
+module SymHask.Printer.Haskell
     ( toHaskell
     ) where
 
