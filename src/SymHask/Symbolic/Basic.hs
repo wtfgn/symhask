@@ -7,6 +7,7 @@ module SymHask.Symbolic.Basic
     , Substitution.Pattern (..)
     , Substitution.Replacement (..)
     , completeSubExprs
+    , concurSubs
     , evalAbs
     , evalMax
     , evenOdd
@@ -15,11 +16,10 @@ module SymHask.Symbolic.Basic
     , linearForm
     , operands
     , separateFactors
+    , seqSubs
+    , subs
     , symbols
     , treeSize
-    , subs
-    , seqSubs
-    , concurSubs
     ) where
 
 import           Control.Monad
