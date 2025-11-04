@@ -1,12 +1,11 @@
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module SymHask.Symbolic.Analysis.Absolute
+module SymHask.Symbolic.Basic.Absolute
     ( absExpr
     ) where
 
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Analysis.LinearForm (LinearForm (..),
-                                                       linearForm)
+import           SymHask.Symbolic.Basic.LinearForm (LinearForm (..), linearForm)
 import           SymHask.Symbolic.Simplification
 
 absExpr :: SimplifiedExpr -> EvalResult SimplifiedExpr

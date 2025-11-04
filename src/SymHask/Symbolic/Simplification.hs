@@ -1,8 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module SymHask.Symbolic.Simplification
-    ( -- Re-export core framework
-      module SymHask.Symbolic
-    , (.**.)
+    ( (.**.)
     , (.*.)
     , (.+.)
     , (.-.)

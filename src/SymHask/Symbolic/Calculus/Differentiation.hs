@@ -1,22 +1,23 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns    #-}
 
-module SymHask.Symbolic.Differentiation
+module SymHask.Symbolic.Calculus.Differentiation
     ( DiffVar (..)
     , diff
+    , mkDiffExpr
+    , mkDiffExpr'
     , mkDiffVar
     , multiDiff
     , pattern Diff'
-    , mkDiffExpr
-    , mkDiffExpr'
     ) where
-import Control.Monad ( foldM )
-import Control.Monad.Error.Class ( MonadError(throwError) )
-import           Data.List.NonEmpty                   (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty                   as NE
-import           Data.Text                            (Text)
-import SymHask.Symbolic.Analysis ( freeOf )
-import           SymHask.Symbolic.Simplification
+import           Control.Monad                   (foldM)
+import           Control.Monad.Error.Class       (MonadError (throwError))
+import           Data.List.NonEmpty              (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty              as NE
+import           Data.Text                       (Text)
+import           SymHask.Symbolic
+import           SymHask.Symbolic.Basic     (freeOf)
+import           SymHask.Symbolic.Simplification ()
 
 -- ============================================================================
 -- * Data Types
@@ -95,7 +96,7 @@ sumRule :: NE.NonEmpty UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExp
 sumRule terms dVar = do
   diffs <- mapM (`diffImpl` dVar) terms
   return $ mkSum diffs
- 
+
 productRule :: NE.NonEmpty UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExpr
 productRule factors dVar = do
   let factorList = NE.toList factors

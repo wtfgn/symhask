@@ -29,14 +29,12 @@ library
       SymHask.Printer
       SymHask.Printer.Haskell
       SymHask.Symbolic
-      SymHask.Symbolic.Analysis
-      SymHask.Symbolic.Analysis.Absolute
-      SymHask.Symbolic.Analysis.LinearForm
-      SymHask.Symbolic.Analysis.Max
-      SymHask.Symbolic.Analysis.Utils
-      SymHask.Symbolic.Differentiation
-      SymHask.Symbolic.Manipulation
-      SymHask.Symbolic.Manipulation.Substitution
+      SymHask.Symbolic.Basic
+      SymHask.Symbolic.Basic.Absolute
+      SymHask.Symbolic.Basic.LinearForm
+      SymHask.Symbolic.Basic.Max
+      SymHask.Symbolic.Basic.Substitution
+      SymHask.Symbolic.Calculus.Differentiation
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
       SymHask.Symbolic.Simplification.RationalNumber

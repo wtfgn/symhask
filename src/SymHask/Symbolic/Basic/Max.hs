@@ -1,18 +1,18 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns    #-}
 
-module SymHask.Symbolic.Analysis.Max
-    ( maxExpr
-    , maxExponent
+module SymHask.Symbolic.Basic.Max
+    ( maxExponent
+    , maxExpr
     ) where
 
+import           Control.Monad                   (foldM)
 import           Control.Monad.Error.Class
-import qualified Data.List.NonEmpty                              as NE
-import           Data.Text                                       (Text)
+import qualified Data.HashSet                    as HS
+import qualified Data.List.NonEmpty              as NE
+import           Data.Text                       (Text)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification
-import qualified Data.HashSet                                    as HS
-import Control.Monad (foldM)
 
 pattern Max' :: HS.HashSet SimplifiedExpr -> SimplifiedExpr
 pattern Max' exprSet <- Function' "max" (NE.toList -> (HS.fromList -> exprSet))
@@ -65,7 +65,7 @@ isDefinitelyGreaterThan a b = case a .-. b of
   Right (Fraction' num den) -> num > 0 && den > 0
   -- If simplification fails or not a clear number,
   -- assume not definitely greater
-  _                           -> False
+  _                         -> False
 
 maxExponent :: SimplifiedExpr -> Text -> EvalResult SimplifiedExpr
 maxExponent expr x = maxExpr $ collectExponents expr x

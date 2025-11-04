@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module SymHask.Symbolic.Manipulation.Substitution
+module SymHask.Symbolic.Basic.Substitution
     ( -- * Wrappers
       Pattern (..)
     , Replacement (..)

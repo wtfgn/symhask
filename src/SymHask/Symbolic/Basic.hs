@@ -1,32 +1,24 @@
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE MultiWayIf      #-}
+{-# LANGUAGE MultiWayIf #-}
 
-module SymHask.Symbolic.Analysis.Utils
-    ( FunctionParity (..)
-    , allFreeOf
+module SymHask.Symbolic.Basic
+    ( allFreeOf
+    , containParameters
+    , freeOf
+    , isNumerical
+    , symbols
+    , treeSize
+    , separateFactors
     , completeSubExprs
     , evenOdd
-    , freeOf
-    , separateFactors
-    , symbols
     ) where
 
 import           Control.Monad
-import qualified Data.HashSet                               as HS
-import qualified Data.List.NonEmpty                         as NE
-import           Data.Text                                  (Text)
+import qualified Data.HashSet                       as HS
+import qualified Data.List.NonEmpty                 as NE
+import           Data.Text                          (Text)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Manipulation.Substitution
+import           SymHask.Symbolic.Basic.Substitution
 import           SymHask.Symbolic.Simplification
-
-freeOf :: SimplifiedExpr -> SimplifiedExpr -> Bool
-freeOf expr var
-  | expr == var = False
-  | isAtomic expr = True
-  | otherwise = all (`freeOf` var) (getOperands expr)
-
-allFreeOf :: (Foldable f) => SimplifiedExpr -> f SimplifiedExpr -> Bool
-allFreeOf var = all (`freeOf` var)
 
 data FunctionParity
   = EvenFunc
@@ -34,24 +26,28 @@ data FunctionParity
   | NeitherFunc
   deriving (Eq, Show)
 
-evenOdd :: SimplifiedExpr -> Text -> EvalResult FunctionParity
-evenOdd expr x = do
-  negX <- simplify (negate (mkSymbol x) :: UnsimplifiedExpr)
-  substituted <- subs
-    (Pattern (mkSymbol x), Replacement negX)
-    expr
-  if
-    | expr .-. substituted == pure (mkNumber 0) -> return EvenFunc
-    | expr .+. substituted == pure (mkNumber 0) -> return OddFunc
-    | otherwise                                 -> return NeitherFunc
+freeOf :: SimplifiedExpr -> SimplifiedExpr -> Bool
+freeOf expr var
+  | expr == var = False
+  | isAtomic expr = True
+  | otherwise = all (`freeOf` var) (operands expr)
 
-completeSubExprs :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
-completeSubExprs expr
-  | null operands = HS.singleton expr
-  | otherwise     = HS.insert expr (HS.unions subSets)
-  where
-    operands = getOperands expr
-    subSets  = map completeSubExprs operands
+allFreeOf :: (Foldable f) => SimplifiedExpr -> f SimplifiedExpr -> Bool
+allFreeOf var = all (`freeOf` var)
+
+operands :: Expr s -> [Expr s]
+operands (Number' _)        = []
+operands (Fraction' _ _)    = []
+operands (Symbol' _)        = []
+operands (Product' xs)      = NE.toList xs
+operands (Sum' xs)          = NE.toList xs
+operands (Quotient' x y)    = [x, y]
+operands (Power' x y)       = [x, y]
+operands (Function' _ args) = NE.toList args
+operands (Factorial' x)     = [x]
+operands (UnaryDiff' x)     = [x]
+operands (BinaryDiff' x y)  = [x, y]
+
 
 symbols :: SimplifiedExpr -> HS.HashSet Text
 symbols expr = case expr of
@@ -101,6 +97,13 @@ treeSize = \case
   Factorial' expr  -> 1 + treeSize expr
   Function' _ args -> 1 + sum (NE.map treeSize args)
 
+completeSubExprs :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
+completeSubExprs expr
+  | null (operands expr) = HS.singleton expr
+  | otherwise     = HS.insert expr (HS.unions subSets)
+  where
+    subSets  = map completeSubExprs $ operands expr
+
 -- | Separate factors into parts free of variable x and parts dependent on x
 -- For expression u*v*w..., separates into (free_part, dependent_part) where:
 -- - free_part contains factors that don't depend on x
@@ -134,4 +137,13 @@ separateFactors expr var = do
     -- else (1, u)
     else return (mkNumber 1, expr)
 
-
+evenOdd :: SimplifiedExpr -> Text -> EvalResult FunctionParity
+evenOdd expr x = do
+  negX <- simplify (negate (mkSymbol x) :: UnsimplifiedExpr)
+  substituted <- subs
+    (Pattern (mkSymbol x), Replacement negX)
+    expr
+  if
+    | expr .-. substituted == pure (mkNumber 0) -> return EvenFunc
+    | expr .+. substituted == pure (mkNumber 0) -> return OddFunc
+    | otherwise                                 -> return NeitherFunc

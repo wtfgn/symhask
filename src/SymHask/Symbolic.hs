@@ -34,7 +34,6 @@ module SymHask.Symbolic
     , pattern Symbol'
     , pattern UnaryDiff'
       -- Helper functions
-    , getOperands
     , isAtomic
     , isBinaryDiff
     , isConstant
@@ -117,6 +116,7 @@ import qualified Data.Text          as T
 import           GHC.Generics       (Generic)
 import           TextShow           (TextShow)
 import           TextShow.Generic   (FromGeneric (FromGeneric))
+
 
 -- ============================================================================
 -- * Error Types
@@ -423,19 +423,6 @@ isUnaryDiff _             = False
 isBinaryDiff :: Expr s -> Bool
 isBinaryDiff (BinaryDiff _ _) = True
 isBinaryDiff _                = False
-
-getOperands :: Expr s -> [Expr s]
-getOperands (Number _)        = []
-getOperands (Fraction _ _)    = []
-getOperands (Symbol _)        = []
-getOperands (Product xs)      = NE.toList xs
-getOperands (Sum xs)          = NE.toList xs
-getOperands (Quotient x y)    = [x, y]
-getOperands (Power x y)       = [x, y]
-getOperands (Function _ args) = NE.toList args
-getOperands (Factorial x)     = [x]
-getOperands (UnaryDiff x)     = [x]
-getOperands (BinaryDiff x y)  = [x, y]
 
 -- ============================================================================
 -- * Simplification Framework

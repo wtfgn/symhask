@@ -1,6 +1,6 @@
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module SymHask.Symbolic.Analysis.LinearForm
+module SymHask.Symbolic.Basic.LinearForm
     ( LinearForm (..)
     , linearForm
     ) where
@@ -9,7 +9,7 @@ import           Control.Monad.Error.Class
 import qualified Data.List.NonEmpty              as NE
 import           Data.Text                       (Text)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Analysis.Utils (freeOf)
+import           SymHask.Symbolic.Basic     (freeOf)
 import           SymHask.Symbolic.Simplification
 
 -- | A linear form represented as a*x + b
