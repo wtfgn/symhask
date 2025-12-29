@@ -128,3 +128,20 @@ main = do
   testDiff (("x" ** "x") + logBase 2 "x") "x"
   testDiff (("x" ** 2 + "x" + 1) * ("x" + 3)) "x"
   testDiff (sqrt ("x" ** 2 + 1)) "x"
+  testDiff ("x" ** 3 + 2 * "x" ** 2 + "x" + 5) "x"
+
+  -- runDiff example
+  case runDiff of
+    Left err -> error $ "runDiff error: " ++ show err
+    Right result -> putStrLn $ "Result of runDiff: " ++ T.unpack (toHaskell result)
+
+runDiff :: EvalResult SimplifiedExpr
+runDiff = do
+  expr' <- simplify expr
+  d1 <- diff expr' =<< mkDiffVar x
+  d2 <- diff d1 =<< mkDiffVar x
+  simplify d2
+  where
+    x = mkSymbol "x"
+    expr :: UnsimplifiedExpr
+    expr = x ** 3 + 2 * x ** 2 + x + 5 

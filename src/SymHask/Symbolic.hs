@@ -42,18 +42,19 @@ module SymHask.Symbolic
     , isFraction
     , isFunction
     , isNumber
+    , isNumerical
     , isPower
     , isProduct
     , isQuotient
     , isSum
     , isSymbol
     , isUnaryDiff
-    , isNumerical
       -- Constructors and pattern synonyms for easy expression building
     , mkBinaryDiff
     , mkFactorial
     , mkFraction
     , mkFunction
+    , mkMax
     , mkNumber
     , mkPower
     , mkProduct
@@ -61,7 +62,6 @@ module SymHask.Symbolic
     , mkSum
     , mkSymbol
     , mkUnaryDiff
-    , mkMax
     , pattern (:**:)
     , pattern (:*:)
     , pattern (:+:)
@@ -106,6 +106,7 @@ module SymHask.Symbolic
     , SimplificationState (..)
     , Simplify (..)
     , unsimplify
+    , (!)
     ) where
 
 import           Control.DeepSeq    (NFData)
@@ -363,6 +364,10 @@ mkFunction = Function
 
 mkFactorial :: Expr a -> UnsimplifiedExpr
 mkFactorial = coerce Factorial
+
+-- (!) operator for factorial
+(!) :: Expr a -> UnsimplifiedExpr
+(!) = mkFactorial
 
 mkUnaryDiff :: Expr a -> UnsimplifiedExpr
 mkUnaryDiff = coerce UnaryDiff
