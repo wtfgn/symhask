@@ -145,3 +145,5 @@ runDiff = do
     x = mkSymbol "x"
     expr :: UnsimplifiedExpr
     expr = x ** 3 + 2 * x ** 2 + x + 5 
+
+-- Test commit
