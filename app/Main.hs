@@ -4,7 +4,7 @@ module Main
     ( main
     ) where
 
-import           Control.Monad.IO.Class                    (MonadIO (liftIO))
+import           Control.Monad.IO.Class                    ()
 import qualified Data.HashSet                              as HS
 import qualified Data.List.NonEmpty                        as NE
 import           Data.Text                                 (Text)
@@ -13,7 +13,7 @@ import           SymHask.Printer.Haskell                   (toHaskell)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic
 import           SymHask.Symbolic.Calculus
-import           SymHask.Symbolic.Simplification
+import           SymHask.Symbolic.Simplification ()
 
 testDiff :: UnsimplifiedExpr -> Text -> IO ()
 testDiff expr varName = do
