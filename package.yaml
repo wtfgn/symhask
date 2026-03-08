@@ -71,3 +71,9 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - symhask
+    - tasty
+    - tasty-hunit
+    - tasty-quickcheck
+    - QuickCheck
+    - text
+    - containers

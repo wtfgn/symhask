@@ -90,6 +90,8 @@ test-suite symhask-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      SymHask.SimplificationSpec
+      TestUtils
       Paths_symhask
   autogen-modules:
       Paths_symhask
@@ -100,14 +102,18 @@ test-suite symhask-test
       OverloadedStrings
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
-    , containers >=0.6 && <0.8
+      QuickCheck
+    , base >=4.7 && <5
+    , containers
     , criterion
     , deepseq >=1.4 && <1.6
     , hashable ==1.4.*
     , mtl ==2.3.1.*
     , symhask
-    , text >=2.0 && <2.2
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
+    , text
     , text-show >=3.10 && <3.12
     , transformers
     , unordered-containers ==0.2.*
