@@ -7,13 +7,9 @@ module SymHask.Symbolic.Basic.Substitution
       -- * With Simplification
     , concurSubs
     , subs
-      -- * Structural Substitution (Based on the AST)
-    -- , concurSubsStruct
-    -- , seqSubsStruct
-    -- , subsStruct
     ) where
 
-import qualified Data.List.NonEmpty                   as NE
+import qualified Data.List.NonEmpty              as NE
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification ()
 
