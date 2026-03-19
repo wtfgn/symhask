@@ -23,6 +23,15 @@ valInteger = choose (-10, 10)
 expInteger :: Gen Integer
 expInteger = choose (0, 4) -- Verify logic with small powers like x**2, x**3
 
+integerExpr :: Gen UnsimplifiedExpr
+integerExpr = mkNumber <$> valInteger
+
+fractionExpr :: Gen UnsimplifiedExpr
+fractionExpr = do
+  n <- valInteger
+  d <- valInteger `suchThat` (/= 0) -- Avoid division by zero
+  return $ mkFraction n d
+
 -- | Generate an expression based on size 'n' to avoid infinite recursion
 arbitraryExpr :: Int -> Gen UnsimplifiedExpr
 arbitraryExpr 0 =
@@ -36,7 +45,7 @@ arbitraryExpr n =
       (1, mkSum . NE.fromList <$> vectorOf 2 subExpr),
       (1, mkProduct . NE.fromList <$> vectorOf 2 subExpr),
       (1, expExprGen),
-      (1, liftA2 mkFraction valInteger (valInteger `suchThat` (/= 0)))
+      (1, fractionExpr)
     ]
   where
     subExpr = arbitraryExpr (n `div` 2)
