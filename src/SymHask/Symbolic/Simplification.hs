@@ -25,6 +25,8 @@ infixl 6 .+., .-.
 infixl 7 .*., ./.
 infixr 8 .**.
 
+-- These are just shorthands for constructing the corresponding UnsimplifiedExpr and then simplifying it.
+-- Not for building large expressions due to potential performance issues with repeated simplification.
 (.+.), (.-.), (.*.), (./.), (.**.):: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
 (.+.) (unsimplify -> x) (unsimplify -> y) = simplify (x + y)
 (.-.) (unsimplify -> x) (unsimplify -> y) = simplify (x - y)
