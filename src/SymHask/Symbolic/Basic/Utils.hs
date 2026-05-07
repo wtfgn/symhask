@@ -2,6 +2,7 @@ module SymHask.Symbolic.Basic.Utils
   ( eliminateBy
   , flattenM
   , isDefinitelyGreaterThan
+  , eitherToMaybe
   ) where
 
 import Control.Monad (foldM)
@@ -41,3 +42,6 @@ isDefinitelyGreaterThan a b = case a .-. b of
   Right (Fraction' num den) -> num > 0 && den > 0
   -- If simplification fails or not a clear number, assume not definitely greater
   _                         -> False
+    
+eitherToMaybe :: Either e a -> Maybe a
+eitherToMaybe = either (const Nothing) Just
