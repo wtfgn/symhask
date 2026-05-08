@@ -30,6 +30,7 @@ library
       SymHask.Printer.Haskell
       SymHask.Symbolic
       SymHask.Symbolic.Basic
+      SymHask.Symbolic.Basic.Polynomial
       SymHask.Symbolic.Basic.Substitution
       SymHask.Symbolic.Basic.Utils
       SymHask.Symbolic.Calculus
@@ -94,6 +95,7 @@ test-suite symhask-test
       SymHask.BasicSpec
       SymHask.DifferentiaionSpec
       SymHask.IntegrationSpec
+      SymHask.PolynomialSpec
       SymHask.SimplificationSpec
       TestUtils
       Paths_symhask
