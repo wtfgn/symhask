@@ -28,6 +28,9 @@ testDiff expr varName = do
         Left err -> error $ "Differentiation error: " ++ show err
         Right result -> putStrLn $ "Derivative w.r.t. " ++ T.unpack varName ++ ": "
                           ++ T.unpack (toHaskell result)
+                          ++ "\n"
+                          --  print the raw result for debugging
+                          ++ "Raw derivative: " ++ show result
   putStrLn ""
 
 testMax :: [UnsimplifiedExpr] -> IO ()
@@ -123,12 +126,17 @@ main = do
   -- testAbs (sqrt (1 - sqrt (2 - sqrt 5)) + I')
   -- testLinearForm (sqrt (1 - sqrt (2 - sqrt 5)) + I') "i"
 
-  testDiff ("x" ** 3 + 2 * "x" ** 2 + "x" + 5) "x"
-  testDiff (sin ("x" ** 2) + exp "x" + log "x") "x"
-  testDiff (("x" ** "x") + logBase 2 "x") "x"
-  testDiff (("x" ** 2 + "x" + 1) * ("x" + 3)) "x"
-  testDiff (sqrt ("x" ** 2 + 1)) "x"
-  testDiff ("x" ** 3 + 2 * "x" ** 2 + "x" + 5) "x"
+  -- testDiff ("x" ** 3 + 2 * "x" ** 2 + "x" + 5) "x"
+  -- testDiff (sin ("x" ** 2) + exp "x" + log "x") "x"
+  -- testDiff (("x" ** "x") + logBase 2 "x") "x"
+  -- testDiff (("x" ** 2 + "x" + 1) * ("x" + 3)) "x"
+  -- testDiff (sqrt ("x" ** 2 + 1)) "x"
+  -- testDiff ("x" ** 3 + 2 * "x" ** 2 + "x" + 5) "x"
+  testDiff ("x" * "y") "x"
+  testDiff ("x" ** "x") "x"
+  testDiff (logBase "x" "y") "x"
+  testDiff (Asin' "x") "x"
+  testDiff ("b" ** (0 ** (mkNumber (-1)) + "a")) "x"
 
   -- runDiff example
   case runDiff of
@@ -145,5 +153,6 @@ runDiff = do
     x = mkSymbol "x"
     expr :: UnsimplifiedExpr
     expr = x ** 3 + 2 * x ** 2 + x + 5 
+
 
 -- Test commit
