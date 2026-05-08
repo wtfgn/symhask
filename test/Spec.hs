@@ -5,6 +5,7 @@ import qualified SymHask.DifferentiaionSpec as Differentiation
 import qualified SymHask.SimplificationSpec as Simplification
 import qualified SymHask.IntegrationSpec as Integration
 import qualified SymHask.BasicSpec as Basic
+import qualified SymHask.PolynomialSpec as Polynomial
 
 main :: IO ()
 main = defaultMain tests
@@ -16,4 +17,5 @@ tests = testGroup "SymHask Tests"
   Simplification.tests
  , Integration.tests
  , Basic.tests
+ , Polynomial.tests
   ]
