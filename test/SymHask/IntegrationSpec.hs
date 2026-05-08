@@ -1,5 +1,4 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module SymHask.IntegrationSpec
   ( tests,
@@ -7,10 +6,11 @@ module SymHask.IntegrationSpec
 where
 
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import SymHask.Symbolic (Simplify (simplify), UnsimplifiedExpr, mkSymbol)
+import SymHask.Symbolic (UnsimplifiedExpr, mkSymbol)
 import SymHask.Symbolic.Calculus.Integration (integrate, integrateLinear, integrateTable, mkIntegrationVar)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
+import TestUtils (simplifyOrFail)
 
 tests :: TestTree
 tests =
@@ -33,7 +33,6 @@ integrationTableTests :: TestTree =
     [ -- Category 1: Constants (free of integration variable)
       let x = mkSymbol "x" :: UnsimplifiedExpr
           mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          simplifyOrFail (simplify -> e) = either (\_ -> error "simplify failed") id e
           runTable e = integrateTable (simplifyOrFail e) (mkI x)
        in testGroup
             "table"
@@ -59,7 +58,6 @@ linearPropertiesTests =
     "Linear Properties"
     [ let x = mkSymbol "x" :: UnsimplifiedExpr
           mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          simplifyOrFail (simplify -> e) = either (\_ -> error "simplify failed") id e
           runLinear e = integrateLinear (simplifyOrFail e) (mkI x)
        in testGroup
             "linear"
@@ -83,7 +81,6 @@ integrateTests =
     "Integration"
     [ let x = mkSymbol "x" :: UnsimplifiedExpr
           mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          simplifyOrFail (simplify -> e) = either (\_ -> error "simplify failed") id e
           runIntegrate e = integrate (simplifyOrFail e) (mkI x)
        in testGroup
             "integrate"

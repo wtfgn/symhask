@@ -5,10 +5,11 @@ module SymHask.BasicSpec
   ) where
 
 import qualified Data.HashSet as HS
-import           SymHask.Symbolic (UnsimplifiedExpr, mkSymbol, Simplify (simplify))
+import           SymHask.Symbolic (UnsimplifiedExpr, mkSymbol)
 import           SymHask.Symbolic.Basic (trialSubstitutions)
 import           Test.Tasty (TestTree, testGroup)
 import           Test.Tasty.HUnit (testCase, (@?=))
+import           TestUtils (simplifyOrFail)
 
 tests :: TestTree
 tests = testGroup "Basic"
@@ -18,7 +19,6 @@ tests = testGroup "Basic"
 trialSubTests :: TestTree
 trialSubTests = testGroup "trialSubstitutions"
   [ let x = mkSymbol "x" :: UnsimplifiedExpr
-        simplifyOrFail e = case simplify e of Left _ -> error "simplify failed"; Right s -> s
         run e = trialSubstitutions (simplifyOrFail e)
     in testGroup "candidates"
       [ testCase "sin(x) yields sin(x) and x" $

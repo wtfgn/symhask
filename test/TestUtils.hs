@@ -1,11 +1,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module TestUtils where
 
 import qualified Data.List.NonEmpty as NE
 import SymHask.Symbolic
+import SymHask.Symbolic.Simplification ()
 import Test.Tasty.QuickCheck
 
 -- | Use a newtype or a specific type alias if Expr takes arguments
@@ -68,3 +70,6 @@ genericShrinkExpr expr =
     Power' b e -> [b, e]
     Fraction' _ _ -> [mkNumber 1] -- Shrink fraction to 1
     _ -> []
+
+simplifyOrFail :: UnsimplifiedExpr -> SimplifiedExpr
+simplifyOrFail (simplify -> e) = either (error . show) id e
