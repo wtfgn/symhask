@@ -30,7 +30,7 @@ import SymHask.Symbolic.Basic
 
 import SymHask.Symbolic.Basic.Utils (eitherToMaybe)
 import SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
-import SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (.-.), (./.))
+import SymHask.Symbolic.Simplification ((.**.), (.*.), (./.))
 
 -- ============================================================================
 
@@ -432,7 +432,7 @@ integrateTable expr var = go integrationTable
         then ruleAntiderivative rule expr var <|> go rest
         else go rest
 
--- | Linear properties of the integral (Equation 5.15 and 5.16)
+-- | Linear properties of the integral
 -- Attempt to apply linearity rules to `expr` with respect to `var`.
 -- Returns `Just antiderivative` when successful, `Nothing` when this
 -- linear-property procedure cannot be applied.
