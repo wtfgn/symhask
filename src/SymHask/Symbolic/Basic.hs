@@ -21,6 +21,7 @@ module SymHask.Symbolic.Basic
     subs,
     symbols,
     treeSize,
+    setFreeOf,
   )
 where
 
@@ -187,6 +188,9 @@ freeOf expr var
   | expr == var = False
   | isAtomic expr = True
   | otherwise = all (`freeOf` var) (operands expr)
+
+setFreeOf :: SimplifiedExpr -> [SimplifiedExpr] -> Bool
+setFreeOf expr = all (freeOf expr)
 
 operands :: Expr a -> [Expr a]
 operands (Number' _) = []
