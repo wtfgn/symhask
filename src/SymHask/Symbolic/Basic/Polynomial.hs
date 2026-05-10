@@ -1,12 +1,33 @@
 module SymHask.Symbolic.Basic.Polynomial
   ( isMonomialSv
   , isPolynomialSv
+  , degreeMonomialSv
+  , degreeSv
+  , coefficientSv
+  , leadingCoefficientSv
+  , isMonomialGpe
+  , isPolynomialGpe
+  , variables
+  , degreeGpe
+  , coefficientGpe
+  , leadingCoefficientGpe
+  , coeffVarMonomial
+  , collectTerms
   ) where
 
-import Data.List.NonEmpty (NonEmpty)
+import Control.Monad (foldM)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
+import qualified Data.HashSet as HS
 import Data.Text (Text)
 import SymHask.Symbolic
+import Control.Applicative ((<|>))
+import Data.Maybe (catMaybes)
+import SymHask.Symbolic.Simplification ((.+.), (.*.), (./.), (.**.))
+import SymHask.Symbolic.Basic.Utils (eitherToMaybe)
+import SymHask.Symbolic.Basic (setFreeOf, freeOf)
+import qualified Data.HashMap.Strict as HM
+import Data.Tuple (swap)
 
 -- | Check whether an expression is a monomial in a single variable.
 --
@@ -17,7 +38,7 @@ isMonomialSv :: SimplifiedExpr -> Text -> Bool
 isMonomialSv (Number' _) _ = True
 isMonomialSv (Fraction' _ _) _ = True
 isMonomialSv (Symbol' s) x = s == x
-isMonomialSv (Power' b e) x = b == mkSymbol x && isPositiveInteger e
+isMonomialSv (Power' b (Number' e)) x = b == mkSymbol x && e > 1
 isMonomialSv (Product' factors) x = all (`isMonomialSv` x) (NE.toList factors)
 isMonomialSv _ _ = False
 
@@ -29,7 +50,339 @@ isPolynomialSv expr x = isMonomialSv expr x || case expr of
   Sum' terms -> all (`isMonomialSv` x) (NE.toList terms)
   _ -> False
 
-isPositiveInteger :: Expr a -> Bool
-isPositiveInteger (Number' n) = n > 1
-isPositiveInteger _ = False
+-- | Compute the degree of a monomial in a single variable.
+--
+-- Returns the exponent of the variable if the expression is a monomial,
+-- or Nothing (Undefined) if it is not.
+--
+-- Examples:
+-- degreeMonomialSv (2*x^3) "x" = Just 3
+-- degreeMonomialSv (3) "x" = Just 0
+-- degreeMonomialSv (x+1) "x" = Nothing (not a monomial)
+degreeMonomialSv :: SimplifiedExpr -> Text -> Maybe Integer
+degreeMonomialSv expr x = snd <$> monomialSummary expr x
+
+
+
+-- | Compute the degree of a polynomial in a single variable.
+--
+-- For a monomial, returns its degree.
+-- For a sum of monomials, returns the maximum degree among all terms.
+-- Returns Nothing (Undefined) if the expression is not polynomial in x.
+--
+-- Examples:
+-- degreeSv (3*x^2 + 4*x + 5) "x" = Just 2
+-- degreeSv (2*x^3) "x" = Just 3
+-- degreeSv ((x+1)*(x+3)) "x" = Nothing (not a polynomial, product of sums)
+-- degreeSv (3) "x" = Just 0
+degreeSv :: SimplifiedExpr -> Text -> Maybe Integer
+degreeSv expr x = degreeMonomialSv expr x <|> case expr of
+  Sum' terms ->
+    let degrees = [degreeMonomialSv term x | term <- NE.toList terms]
+    in if Nothing `notElem` degrees
+      then Just $ maximum (catMaybes degrees)
+      else Nothing
+  _ -> Nothing
+
+-- | Compute the coefficient of x^j in a polynomial in a single variable.
+--
+-- Returns the corresponding coefficient if the expression is a polynomial in x,
+-- 0 if j is larger than the degree.
+-- Returns Left if the expression is not a polynomial in x.
+coefficientSv :: SimplifiedExpr -> Text -> Integer -> EvalResult SimplifiedExpr
+coefficientSv expr x j
+  | not (isPolynomialSv expr x) =
+      Left $
+        UnsupportedOperation
+        "coefficientSv: expression is not a polynomial"
+  | otherwise = case expr of
+      Sum' terms -> foldM addTerm (mkNumber 0) (NE.toList terms)
+      _ -> coefficientMonomialSv expr x j
+  where
+    addTerm acc term = do
+      coef <- coefficientMonomialSv term x j
+      acc .+. coef
+
+-- For a monomial of degree d, extract coefficient directly from the monomial summary.
+coefficientMonomialSv :: SimplifiedExpr -> Text -> Integer -> EvalResult SimplifiedExpr
+coefficientMonomialSv expr x j
+  | not (isMonomialSv expr x) = pure $ mkNumber 0
+  | j < 0 = pure $ mkNumber 0
+  | otherwise = case monomialSummary expr x of
+      Just (coeff, degree)
+        | degree == j -> pure coeff
+        | otherwise -> pure $ mkNumber 0
+      Nothing -> pure $ mkNumber 0
+
+-- | Compute the leading coefficient of a polynomial in a single variable.
+--
+-- If the expression is a polynomial in x, returns the coefficient of x^deg(u, x).
+-- Otherwise returns an error.
+leadingCoefficientSv :: SimplifiedExpr -> Text -> EvalResult SimplifiedExpr
+leadingCoefficientSv expr x =
+  case degreeSv expr x of
+    Nothing -> Left $
+      UnsupportedOperation
+      "leadingCoefficientSv: expression is not a polynomial"
+    Just degree ->
+      case coefficientSv expr x degree of
+        Left _ -> Left $
+          UnsupportedOperation
+          "leadingCoefficientSv: unable to compute leading coefficient"
+        Right coeff -> pure coeff
+
+-- | Extract (coefficient, degree) for a monomial in x.
+--
+-- Returns Just (coeff, deg) if the expression is a monomial in x,
+-- where coeff is the coefficient and deg is the exponent of x.
+-- For constants, deg = 0.
+-- Returns Nothing if the expression is not a monomial.
+monomialSummary :: SimplifiedExpr -> Text -> Maybe (SimplifiedExpr, Integer)
+monomialSummary (Number' 0) _ = Nothing  -- Zero is special (degree -∞)
+monomialSummary (Number' n) _ = Just (mkNumber n, 0)
+monomialSummary expr@(Fraction' _ _) _ = Just (expr, 0)
+monomialSummary (Symbol' s) x
+  | s == x = Just (mkNumber 1, 1)
+  | otherwise = Nothing
+monomialSummary (Power' b (Number' e)) x
+  | b == mkSymbol x = Just (mkNumber 1, e)
+  | otherwise = Nothing
+monomialSummary (Product' (f1 :| [f2])) x = do
+  (coeff1, deg1) <- monomialSummary f1 x
+  (coeff2, deg2) <- monomialSummary f2 x
+  coeff <- eitherToMaybe $ coeff1 .*. coeff2
+  pure (coeff, deg1 + deg2)
+monomialSummary _ _ = Nothing
+
+-- | Check if an expression is a general monomial in a set of generalized variables.
+--
+-- A GME in S = {x₁, x₂, ..., xₘ} satisfies one of:
+-- - GME-1: Free of all variables in S
+-- - GME-2: u is a member of S
+-- - GME-3: u = x^n where x ∈ S and n > 1 is an integer
+-- - GME-4: u is a product where each operand is a GME in S
+isMonomialGpe :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Bool
+isMonomialGpe u vars
+  | HS.null vars = True
+  | u `HS.member` vars = True  -- GME-2: u is a generalized variable
+  | otherwise = case u of
+      Power' b (Number' e) -> -- GME-3: x^n where x in vars and n > 1
+        (b `HS.member` vars && e > 1) || setFreeOf u (HS.toList vars)
+      Product' factors ->
+        all (`isMonomialGpe` vars) (NE.toList factors)  -- GME-4: product of GMEs
+      _ -> setFreeOf u (HS.toList vars)  -- GME-1: free of all variables
+
+-- | Check if an expression is a general polynomial in a set of generalized variables.
+--
+-- A GPE in S satisfies one of:
+-- - GPE-1: u is a GME in S
+-- - GPE-2: u is a sum where each operand is a GME in S
+isPolynomialGpe :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Bool
+isPolynomialGpe u vars
+  | u `HS.member` vars = True  -- Short-circuit: u is itself a generalized variable (GME-2)
+  | otherwise = case u of
+      Sum' terms -> all (`isMonomialGpe` vars) (NE.toList terms)  -- GPE-2
+      _ -> isMonomialGpe u vars  -- GPE-1
+
+-- | Compute the natural set of generalized variables for an expression.
+variables :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
+variables = \case
+  Number' _ -> HS.empty -- VAR-1
+  Fraction' _ _ -> HS.empty -- VAR-1
+  Power' b (Number' e)
+    | e > 1 -> HS.singleton b -- VAR-2 (integer exponent > 1)
+  p@(Power' _ _) -> HS.singleton p -- VAR-2 otherwise: include the power itself
+  Sum' terms -> foldMap variables (NE.toList terms) -- VAR-3
+  Product' factors -> foldMap varForFactors (NE.toList factors) -- VAR-4
+  expr -> HS.singleton expr -- VAR-5
+  where
+    varForFactors :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
+    varForFactors (Number' _) = HS.empty
+    varForFactors (Fraction' _ _) = HS.empty
+    varForFactors (Power' b (Number' e))
+      | e > 1 = HS.singleton b
+    varForFactors p@(Power' _ _) = HS.singleton p
+    varForFactors s@(Sum' _) = HS.singleton s
+    varForFactors factor = variables factor
+
+-- | Degree for general polynomial expressions (GPE).
+-- Returns Left if the expression is not a GPE in the given set of generalized variables.
+-- Otherwise returns Right (Just n) for degree n, or Right Nothing to represent -∞ (zero polynomial).
+degreeGpe :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> EvalResult (Maybe Integer)
+degreeGpe u vars
+  | not (isPolynomialGpe u vars) = Left $ UnsupportedOperation "degreeGpe: expression is not a GPE"
+  | isMonomialGpe u vars = pure $ monomialGpeDegree u vars
+  | otherwise = case u of
+      Sum' terms -> do
+        let ds = map (`monomialGpeDegree` vars) (NE.toList terms)
+        if Nothing `elem` ds
+          then pure Nothing
+          else pure $ Just $ maximum (catMaybes ds)
+      _ -> pure $ monomialGpeDegree u vars
+
+-- | Compute degree of a monomial GME: sum of exponents of generalized variables.
+-- Returns Nothing for the zero monomial.
+monomialGpeDegree :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Maybe Integer
+monomialGpeDegree (Number' 0) _ = Nothing
+monomialGpeDegree (Number' _) _ = Just 0
+monomialGpeDegree (Fraction' _ _) _ = Just 0
+monomialGpeDegree expr vars
+  | expr `HS.member` vars = Just 1  -- expr itself is a generalized variable
+  | otherwise = case expr of
+      Symbol' _ -> Just 0  -- symbol not in vars
+      Power' b (Number' e) ->
+        if b `HS.member` vars && e > 1 then Just e else Just 0
+      Product' factors -> do
+        ds <- mapM (`monomialGpeDegree` vars) (NE.toList factors)
+        return $ sum ds
+      _ -> Just 0
+
+
+-- | Extract (coefficient, degree) for a monomial w.r.t. a single generalized variable.
+-- Returns Left when the operand is not a monomial in the generalized variable.
+coefficientMonomialGpe :: SimplifiedExpr -> SimplifiedExpr -> EvalResult (SimplifiedExpr, Integer)
+coefficientMonomialGpe u x
+  | u == x = pure (mkNumber 1, 1)
+  | otherwise = case u of
+      Power' b (Number' e) -> handlePowerCase b e
+      Product' factors -> foldM extractProductFactor (u, 0) factors
+      _ -> handleDefaultCase
+  where
+    handlePowerCase b e
+      | b == x && e > 1 = pure (mkNumber 1, e)
+      | u `freeOf` x = pure (u, 0)
+      | otherwise = Left $ UnsupportedOperation "coefficientMonomialGpe: not a monomial"
+
+    extractProductFactor (coef, deg) factor = do
+      (_, deg') <- coefficientMonomialGpe factor x
+      if deg' == 0
+        then pure (coef, deg) -- no update to coef or deg
+        else do
+          factorPower <- x .**. mkNumber deg'
+          updatedCoef <- coef ./. factorPower
+          pure (updatedCoef, deg')
+
+    handleDefaultCase
+      | u `freeOf` x = pure (u, 0)
+      | otherwise = Left $ UnsupportedOperation "coefficientMonomialGpe: not a monomial"
+
+
+-- | Coefficient_gpe(u, x, j): coefficient of x^j in polynomial u (generalized var x).
+-- Returns Left if u is not a polynomial in x; otherwise returns the coefficient (possibly 0).
+coefficientGpe :: SimplifiedExpr -> SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
+coefficientGpe u x j
+  | j < 0 = pure $ mkNumber 0
+  | not (isPolynomialGpe u (HS.singleton x)) = Left $ UnsupportedOperation "coefficientGpe: expression is not a polynomial in x"
+  | otherwise = case u of
+      Sum' terms -> foldM addTerm (mkNumber 0) (NE.toList terms)
+      _ -> do
+        (c, m) <- coefficientMonomialGpe u x
+        if m == j then pure c else pure $ mkNumber 0
+  where
+    addTerm acc term = do
+      (c, m) <- coefficientMonomialGpe term x
+      if m == j then acc .+. c else pure acc
+
+
+-- | Leading_coefficient_gpe(u, x): leading coefficient of u with respect to
+-- the generalized variable x. Returns Left when u is not a GPE in x.
+leadingCoefficientGpe :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+leadingCoefficientGpe u x = do
+  degM <- degreeGpe u (HS.singleton x)
+  case degM of
+    -- zero polynomial: leading coefficient is 0
+    Nothing -> pure $ mkNumber 0
+    Just d -> case coefficientGpe u x d of
+      Left _ -> Left $ UnsupportedOperation "leadingCoefficientGpe: unable to compute leading coefficient"
+      Right coeff -> pure coeff
+
+
+-- | Extract coefficient and variable parts of a monomial w.r.t. a set of generalized variables.
+-- Returns (coefficient, variable_part) where the monomial = coefficient * variable_part.
+-- For a monomial that doesn't contain any variables in S, returns (monomial, 1).
+coeffVarMonomial :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> EvalResult (SimplifiedExpr, SimplifiedExpr)
+coeffVarMonomial u vars
+  | HS.null vars = pure (u, mkNumber 1)
+  | not $ isMonomialGpe u vars = Left $ UnsupportedOperation "coeffVarMonomial: expression is a monomial, not a product of coefficient and variable part"
+  | setFreeOf u (HS.toList vars) = pure (u, mkNumber 1)
+  | u `HS.member` vars = pure (mkNumber 1, u)  -- u itself is a variable
+  | otherwise = case u of
+      Number' _ -> pure (u, mkNumber 1)
+      Fraction' _ _ -> pure (u, mkNumber 1)
+      Power' b (Number' e) ->
+        if b `HS.member` vars && e > 1
+          then pure (mkNumber 1, u)  -- power of variable
+          else pure (u, mkNumber 1)
+      Product' factors -> decomposeProduct (NE.toList factors) vars
+      _ -> pure (u, mkNumber 1)
+  where
+    decomposeProduct factors varSet = do
+      pairs <- mapM (`coeffVarMonomial` varSet) factors
+      let coeffs = map fst pairs
+          varParts = map snd pairs
+      coeff <- foldM (.*.) (mkNumber 1) coeffs
+      varPart <- foldM (.*.) (mkNumber 1) varParts
+      pure (coeff, varPart)
+
+
+-- | Collect like terms in a general polynomial expression.
+-- Returns the collected form of u, or Undefined (Left) if u is not a GPE in S.
+-- In collected form, u is a GME in S or a sum of GMEs with distinct variable parts.
+collectTerms :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
+collectTerms u vars
+  | not (isPolynomialGpe u vars) =
+      Left $ UnsupportedOperation "collectTerms: expression is not a GPE"
+  | u `HS.member` vars = pure u  -- already a single variable, which is a GME
+  | otherwise = case u of
+      Sum' terms -> collectFromSum (NE.toList terms) vars
+      _ -> pure u  -- already a single monomial, in collected form
+
+
+-- | Helper to collect terms from a sum by grouping by variable part.
+collectFromSum :: [SimplifiedExpr] -> HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
+collectFromSum operands vars = do
+  -- Extract coefficient and variable part for each operand
+  pairs <- mapM (`coeffVarMonomial` vars) operands
+
+  -- Fold into a hashmap keyed by variable part, summing coefficients
+  let insertPair m (coef, varPart) =
+        case HM.lookup varPart m of
+          Nothing -> pure $ HM.insert varPart coef m
+          Just existingCoef -> do
+            summed <- existingCoef .+. coef
+            pure $ HM.insert varPart summed m
+
+  groupedMap <- foldM insertPair HM.empty pairs
+
+  if HM.null groupedMap
+    then pure $ mkNumber 0
+    else do
+      -- Build list of terms (coef * varPart) from the map
+      termResults <- mapM (\(varPart, coef) -> coef .*. varPart) (HM.toList groupedMap)
+      case NE.nonEmpty termResults of
+        Nothing -> pure $ mkNumber 0
+        Just termList -> simplify $ mkSum termList
+-- collectFromSum operands vars = do
+--   -- Extract coefficient and variable part for each operand
+--   pairs <- mapM (`coeffVarMonomial` vars) operands
+
+--   -- Group terms in first-occurrence order, combining only matching variable parts.
+--   groupedPairs <- foldM insertPair [] pairs
+
+--   case NE.nonEmpty groupedPairs of
+--     Nothing -> pure $ mkNumber 0
+--     Just groupedList -> do
+--       termResults <- mapM (\(coef, varPart) -> coef .*. varPart) groupedList
+--       -- groupedList is NonEmpty, so termResults will be NonEmpty as well
+--       simplify $ mkSum  termResults
+--   where
+--     insertPair :: [(SimplifiedExpr, SimplifiedExpr)] -> (SimplifiedExpr, SimplifiedExpr) -> EvalResult [(SimplifiedExpr, SimplifiedExpr)]
+--     insertPair [] pair = pure [pair]
+--     insertPair ((existingCoef, existingVarPart) : rest) pair@(coef, varPart)
+--       | existingVarPart == varPart = do
+--           summed <- existingCoef .+. coef
+--           pure ((summed, existingVarPart) : rest)
+--       | otherwise = do
+--           updatedRest <- insertPair rest pair
+--           pure ((existingCoef, existingVarPart) : updatedRest)
 
