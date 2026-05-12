@@ -3,11 +3,14 @@ module SymHask.Symbolic.Basic.Utils
   , flattenM
   , isDefinitelyGreaterThan
   , eitherToMaybe
+  , buildRestSum
+  , buildRestProduct
   ) where
 
 import Control.Monad (foldM)
 import SymHask.Symbolic
 import SymHask.Symbolic.Simplification
+import qualified Data.List.NonEmpty as NE
 
 -- | Generic elimination: keep elements that are not dominated by any other.
 --   `d x y` should be True when x dominates y (i.e. x > y).
@@ -45,3 +48,19 @@ isDefinitelyGreaterThan a b = case a .-. b of
     
 eitherToMaybe :: Either e a -> Maybe a
 eitherToMaybe = either (const Nothing) Just
+
+-- | Build a normalized "rest" expression for a sum given the tail operands.
+-- Returns 0 for an empty tail, the single element for a singleton tail,
+-- or the simplified sum for multiple elements.
+buildRestSum :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
+buildRestSum [] = pure $ mkNumber 0
+buildRestSum [x] = pure x
+buildRestSum xs = simplify $ mkSum (NE.fromList xs)
+
+-- | Build a normalized "rest" expression for a product given the tail operands.
+-- Returns 1 for an empty tail, the single element for a singleton tail,
+-- or the simplified product for multiple elements.
+buildRestProduct :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
+buildRestProduct [] = pure $ mkNumber 1
+buildRestProduct [x] = pure x
+buildRestProduct xs = simplify $ mkProduct (NE.fromList xs)
