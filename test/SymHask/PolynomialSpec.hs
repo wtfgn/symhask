@@ -8,7 +8,7 @@ where
 import qualified Data.HashSet as HS
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import SymHask.Symbolic (ExprError (..), SimplifiedExpr, Simplify (simplify), UnsimplifiedExpr, mkFraction, mkFunction, mkNumber, mkSymbol)
-import SymHask.Symbolic.Basic.Polynomial (coeffVarMonomial, coefficientGpe, coefficientSv, collectTerms, degreeGpe, degreeMonomialSv, degreeSv, isMonomialGpe, isMonomialSv, isPolynomialGpe, isPolynomialSv, leadingCoefficientGpe, leadingCoefficientSv, variables)
+import SymHask.Symbolic.Basic.Polynomial (algebraicExpand, coeffVarMonomial, coefficientGpe, coefficientSv, collectTerms, degreeGpe, degreeMonomialSv, degreeSv, isMonomialGpe, isMonomialSv, isPolynomialGpe, isPolynomialSv, leadingCoefficientGpe, leadingCoefficientSv, variables, numer, denom)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 import TestUtils (simplifyOrFail)
@@ -29,8 +29,11 @@ tests =
       degreeGpeTests,
       coefficientGpeTests,
       leadingCoefficientGpeTests,
+      algebraicExpandTests,
       collectTermsTests,
-      coeffVarMonomialTests
+      coeffVarMonomialTests,
+      denomTests,
+      numerTests
     ]
 
 monomialTests :: TestTree
@@ -556,8 +559,7 @@ collectTermsTests :: TestTree
 collectTermsTests =
   testGroup
     "collectTerms"
-    [ 
-      testCase "Collect form of 2*a*x*y + 3*b*x*y + 4*a*x + 5*b*x in {x, y} is (2*a + 3*b)*x*y + (4*a + 5*b)*x" $ do
+    [ testCase "Collected form of 2*a*x*y + 3*b*x*y + 4*a*x + 5*b*x in {x, y} is (2*a + 3*b)*x*y + (4*a + 5*b)*x" $ do
         let a = mkSymbol "a" :: UnsimplifiedExpr
             b = mkSymbol "b" :: UnsimplifiedExpr
             x = mkSymbol "x" :: UnsimplifiedExpr
@@ -565,28 +567,282 @@ collectTermsTests =
             expr = mkNumber 2 * a * x * y + mkNumber 3 * b * x * y + mkNumber 4 * a * x + mkNumber 5 * b * x
             expected = (mkNumber 2 * a + mkNumber 3 * b) * x * y + (mkNumber 4 * a + mkNumber 5 * b) * x
         collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x, simplifyOrFail y]) @?= Right (simplifyOrFail expected),
-      testCase "Collect form of 2*a*x*y + 3*b*x*y + 4*a*x + 5*b*x in {a, b} is (2*x*y + 4*x)*a + (3*x*y + 5*x)*b" $ do
+      testCase "Collected form of 2*a*x*y + 3*b*x*y + 4*a*x + 5*b*x in {a, b} is (2*x*y + 4*x)*a + (3*x*y + 5*x)*b" $ do
         let a = mkSymbol "a" :: UnsimplifiedExpr
             b = mkSymbol "b" :: UnsimplifiedExpr
             x = mkSymbol "x" :: UnsimplifiedExpr
             y = mkSymbol "y" :: UnsimplifiedExpr
             expr = mkNumber 2 * a * x * y + mkNumber 3 * b * x * y + mkNumber 4 * a * x + mkNumber 5 * b * x
             expected = (mkNumber 2 * x * y + mkNumber 4 * x) * a + (mkNumber 3 * x * y + mkNumber 5 * x) * b
-        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail a, simplifyOrFail b]) @?= Right (simplifyOrFail expected)
-        , testCase "Collect simple like terms 2*x + 3*x + 4 in {x} -> 5*x + 4" $ do
+        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail a, simplifyOrFail b]) @?= Right (simplifyOrFail expected),
+      testCase "Collect simple like terms 2*x + 3*x + 4 in {x} -> 5*x + 4" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 2 * x + mkNumber 3 * x + mkNumber 4
+            expected = mkNumber 5 * x + mkNumber 4
+        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) @?= Right (simplifyOrFail expected),
+      testCase "Collect cancelling terms a*x - a*x + b in {x} -> b" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = a * x + (mkNumber (-1) * a * x) + b
+        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) @?= Right (simplifyOrFail b),
+      testCase "Collect with generalized variable x^2: 2*(x^2)^2 + 3*(x^2) in {x^2} keeps distinct parts" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            x2 = x ** (2 :: UnsimplifiedExpr)
+            expr = mkNumber 2 * (x2 ** (2 :: UnsimplifiedExpr)) + mkNumber 3 * x2
+        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x2]) @?= Right (simplifyOrFail expr),
+      testCase "Collected form of a*x*sin(x)*x + b in {x} does not exist because it is not a polynomial in x" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = a * x * mkFunction "sin" (x :| []) * x + b
+        case collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) of
+          Left _ -> pure ()
+          Right _ -> fail "Expected Left error for non-polynomial",
+      testCase "Collected form of 2*a*x + 3*a*x*b in {a, x} is (2 + 3*b)*a*x" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 2 * a * x + mkNumber 3 * a * x * b
+            expected = (mkNumber 2 + mkNumber 3 * b) * a * x
+        collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail a, simplifyOrFail x]) @?= Right (simplifyOrFail expected)
+    ]
+
+algebraicExpandTests :: TestTree
+algebraicExpandTests =
+  testGroup
+    "algebraicExpand"
+    [ testCase "(x+2)(x+3)(x+4) expands to x^3 + 9*x^2 + 26*x + 24" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x + mkNumber 2) * (x + mkNumber 3) * (x + mkNumber 4)
+            expected = (x ** (3 :: UnsimplifiedExpr)) + (mkNumber 9 * (x ** (2 :: UnsimplifiedExpr))) + (mkNumber 26 * x) + mkNumber 24
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "(x+y+z)^3 expands to x^3 + y^3 + z^3 + 3*x^2*y + 3*x^2*z + 3*y^2*x + 3*y^2*z + 3*z^2*x + 3*z^2*y + 6*x*y*z" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            z = mkSymbol "z" :: UnsimplifiedExpr
+            expr = (x + y + z) ** (3 :: UnsimplifiedExpr)
+            expected = x ** 3 + y ** 3 + z ** 3 + 3 * (x ** 2) * y + 3 * (x ** 2) * z + 3 * (y ** 2) * x + 3 * (y ** 2) * z + 3 * (z ** 2) * x + 3 * (z ** 2) * y + 6 * x * y * z
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "(x+1)^2 + (y+1)^2 expands to x^2 + 2x + y^2 + 2y + 2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = (x + mkNumber 1) ** (2 :: UnsimplifiedExpr) + (y + mkNumber 1) ** (2 :: UnsimplifiedExpr)
+            expected = (x ** (2 :: UnsimplifiedExpr)) + (mkNumber 2 * x) + (y ** (2 :: UnsimplifiedExpr)) + (mkNumber 2 * y) + mkNumber 2
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "((x+2)^2 + 3)^2 expands to x^4 + 8*x^3 + 30*x^2 + 56*x + 49" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            inner = (x + mkNumber 2) ** (2 :: UnsimplifiedExpr) + mkNumber 3
+            expr = inner ** (2 :: UnsimplifiedExpr)
+            expected = (x ** (4 :: UnsimplifiedExpr)) + (mkNumber 8 * (x ** (3 :: UnsimplifiedExpr))) + (mkNumber 30 * (x ** (2 :: UnsimplifiedExpr))) + (mkNumber 56 * x) + mkNumber 49
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "(x(y+1)^(3/2) + 1)(x(y+1)^(3/2) - 1) expands to x^2*y^3 + 3*x^2*y^2 + 3*x^2*y + x^2 - 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            yPlus1 = y + mkNumber 1
+            -- x(y+1)^(3/2)
+            term = x * (yPlus1 ** mkFraction 3 2)
+            expr = (term + mkNumber 1) * (term - mkNumber 1)
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> do
+            -- The result should expand fully and be free of fractional exponents in standard form
+            -- When (y+1)^3 is expanded, we get y^3 + 3y^2 + 3y + 1
+            -- So x^2(y+1)^3 expands to x^2(y^3 + 3y^2 + 3y + 1)
+            let expected = x ** 2 * y ** 3 + 3 * x ** 2 * y ** 2 + 3 * x ** 2 * y + x ** 2 - 1
+            simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "((x(y+1)^(1/2) + 1)^4) expands correctly" $ do
+        let x = mkSymbol "x"
+            y = mkSymbol "y"
+            yPlus1 = y + 1
+            expr = (x * (yPlus1 ** mkFraction 1 2) + 1) ** 4
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> do
+            let expected =
+                  (x ** 4) * (y ** 2)
+                    + 2 * x ** 4 * y
+                    + x ** 4
+                    -- The term 4 * (x ** 3) * (yPlus1 ** (3 / 2))
+                    -- with fractional exponent should be fully expanded
+                    + 4 * (x ** 3) * (yPlus1 ** (1 / 2))
+                    + 4 * (x ** 3) * y * (yPlus1 ** (1 / 2))
+                    + 6 * (x ** 2) * y
+                    + 6 * (x ** 2)
+                    + 4 * x * (yPlus1 ** (1 / 2))
+                    + 1
+            simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "sin(a*(b + c)) expands to sin(a*b + a*c)" $ do
+        let a = mkSymbol "a"
+            b = mkSymbol "b"
+            c = mkSymbol "c"
+            expr = mkFunction "sin" (a * (b + c) :| [])
+            expected = mkFunction "sin" (a * b + a * c :| [])
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "sin((x(y+1)^(1/2) + 1)^4 + log(a*(x+1))) " $ do
+        let x = mkSymbol "x"
+            y = mkSymbol "y"
+            a = mkSymbol "a"
+            yPlus1 = y + 1
+            inner = (x * (yPlus1 ** mkFraction 1 2) + 1) ** 4 + mkFunction "log" (a * (x + 1) :| [])
+            expr = mkFunction "sin" (inner :| [])
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> do
+            let expectedInner =
+                  (x ** 4) * (y ** 2)
+                    + 2 * x ** 4 * y
+                    + x ** 4
+                    -- The term 4 * (x ** 3) * (yPlus1 ** (3 / 2)) 
+                    -- with fractional exponent should be fully expanded
+                    + 4 * (x ** 3) * (yPlus1 ** (1 / 2))
+                    + 4 * (x ** 3) * y * (yPlus1 ** (1 / 2))
+                    + 6 * (x ** 2) * y
+                    + 6 * (x ** 2)
+                    + 4 * x * (yPlus1 ** (1 / 2))
+                    + 1
+                    + mkFunction "log" (a * x + a :| [])
+                expected = mkFunction "sin" (expectedInner :| [])
+            simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "a / (b*( c + d)) expands to a / (b*c + b*d)" $ do
+        let a = mkSymbol "a"
+            b = mkSymbol "b"
+            c = mkSymbol "c"
+            d = mkSymbol "d"
+            expr = a / (b * (c + d))
+            expected = a / (b * c + b * d)
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "a / ((x+1)*(x+2)) expands to a / (x^2 + 3*x + 2)" $ do
+        let a = mkSymbol "a"
+            x = mkSymbol "x"
+            expr = a / ((x + 1) * (x + 2))
+            expected = a / (x ** 2 + 3 * x + 2)
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e,
+      testCase "1 / (x^2 + x - x*(x + 1)) returns error because of division by zero" $ do
+        let x = mkSymbol "x"
+            expr = 1 / (x ** 2 + x - x * (x + 1))
+        case algebraicExpand (simplifyOrFail expr) of
+          Left _ -> pure ()
+          Right _ -> fail "Expected Left error for division by zero",
+      testCase "(x + 1)^(5/2) expands to (x + 1)^(1/2)*x^2 + 2(x + 1)^(1/2)*x + (x + 1)^(1/2)" $ do
+        let x = mkSymbol "x"
+            expr = (x + 1) ** mkFraction 5 2
+            expected = (x + 1) ** mkFraction 1 2 * (x ** 2) + 2 * (x + 1) ** mkFraction 1 2 * x + (x + 1) ** mkFraction 1 2
+        case algebraicExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "algebraicExpand failed: " ++ show e
+    ]
+
+numerTests :: TestTree
+numerTests =
+  testGroup
+    "numer"
+    [ testCase "numer of (x^2 + 1)/(x + 1) is x^2 + 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x ** (2 :: UnsimplifiedExpr) + mkNumber 1) / (x + mkNumber 1)
+            expected = x ** (2 :: UnsimplifiedExpr) + mkNumber 1
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e,
+      testCase "numer of 1/(x^2 + 1) is 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 1 / (x ** (2 :: UnsimplifiedExpr) + mkNumber 1)
+            expected = mkNumber 1
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e,
+      testCase "numer of (x^3 + x^2 + x + 1)/(x^2 + 1) is x^3 + x^2 + x + 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x ** (3 :: UnsimplifiedExpr) + x ** (2 :: UnsimplifiedExpr) + x + mkNumber 1) / (x ** (2 :: UnsimplifiedExpr) + mkNumber 1)
+            expected = x ** (3 :: UnsimplifiedExpr) + x ** (2 :: UnsimplifiedExpr) + x + mkNumber 1
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e,
+      testCase "numer of sin(x)/cos(x) is sin(x)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkFunction "sin" (x :| []) / mkFunction "cos" (x :| [])
+            expected = mkFunction "sin" (x :| [])
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e,
+      testCase "numer of 1/sin(x) is 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 1 / mkFunction "sin" (x :| [])
+            expected = mkNumber 1
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e,
+        testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 2*x*(x + 1)*y^n" $ do
           let x = mkSymbol "x" :: UnsimplifiedExpr
-              expr = mkNumber 2 * x + mkNumber 3 * x + mkNumber 4
-              expected = mkNumber 5 * x + mkNumber 4
-          collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) @?= Right (simplifyOrFail expected)
-        , testCase "Collect cancelling terms a*x - a*x + b in {x} -> b" $ do
-          let a = mkSymbol "a" :: UnsimplifiedExpr
-              b = mkSymbol "b" :: UnsimplifiedExpr
-              x = mkSymbol "x" :: UnsimplifiedExpr
-              expr = a * x + (mkNumber (-1) * a * x) + b
-          collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) @?= Right (simplifyOrFail b)
-        , testCase "Collect with generalized variable x^2: 2*(x^2)^2 + 3*(x^2) in {x^2} keeps distinct parts" $ do
+              y = mkSymbol "y" :: UnsimplifiedExpr
+              n = mkSymbol "n" :: UnsimplifiedExpr
+              expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
+              expected = mkNumber 2 * x * (x + mkNumber 1) * (y ** n)
+          case numer (simplifyOrFail expr) of
+            Right out -> simplifyOrFail expected @?= out
+            Left e -> fail $ "numer failed: " ++ show e
+    ]
+
+denomTests :: TestTree
+denomTests = 
+  testGroup
+    "denom"
+    [ testCase "denom of (x^2 + 1)/(x + 1) is x + 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x ** (2 :: UnsimplifiedExpr) + mkNumber 1) / (x + mkNumber 1)
+            expected = x + mkNumber 1
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e,
+      testCase "denom of 1/(x^2 + 1) is x^2 + 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 1 / (x ** (2 :: UnsimplifiedExpr) + mkNumber 1)
+            expected = x ** (2 :: UnsimplifiedExpr) + mkNumber 1
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e,
+      testCase "denom of (x^3 + x^2 + x + 1)/(x^2 + 1) is x^2 + 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x ** (3 :: UnsimplifiedExpr) + x ** (2 :: UnsimplifiedExpr) + x + mkNumber 1) / (x ** (2 :: UnsimplifiedExpr) + mkNumber 1)
+            expected = x ** (2 :: UnsimplifiedExpr) + mkNumber 1
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e,
+      testCase "denom of sin(x)/cos(x) is cos(x)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkFunction "sin" (x :| []) / mkFunction "cos" (x :| [])
+            expected = mkFunction "cos" (x :| [])
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e,
+      testCase "denom of 1/sin(x) is sin(x)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = mkNumber 1 / mkFunction "sin" (x :| [])
+            expected = mkFunction "sin" (x :| [])
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e,
+        testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 3*(x + 2)" $ do
           let x = mkSymbol "x" :: UnsimplifiedExpr
-              x2 = x ** (2 :: UnsimplifiedExpr)
-              expr = mkNumber 2 * (x2 ** (2 :: UnsimplifiedExpr)) + mkNumber 3 * x2
-          collectTerms (simplifyOrFail expr) (HS.fromList [simplifyOrFail x2]) @?= Right (simplifyOrFail expr)
+              y = mkSymbol "y" :: UnsimplifiedExpr
+              n = mkSymbol "n" :: UnsimplifiedExpr
+              expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
+              expected = mkNumber 3 * (x + mkNumber 2)
+          case denom (simplifyOrFail expr) of
+            Right out -> simplifyOrFail expected @?= out
+            Left e -> fail $ "denom failed: " ++ show e
     ]

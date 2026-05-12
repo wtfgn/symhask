@@ -1,33 +1,38 @@
 module SymHask.Symbolic.Basic.Polynomial
-  ( isMonomialSv
-  , isPolynomialSv
-  , degreeMonomialSv
-  , degreeSv
-  , coefficientSv
-  , leadingCoefficientSv
-  , isMonomialGpe
-  , isPolynomialGpe
-  , variables
-  , degreeGpe
-  , coefficientGpe
-  , leadingCoefficientGpe
-  , coeffVarMonomial
-  , collectTerms
-  ) where
+  ( isMonomialSv,
+    isPolynomialSv,
+    degreeMonomialSv,
+    degreeSv,
+    coefficientSv,
+    leadingCoefficientSv,
+    isMonomialGpe,
+    isPolynomialGpe,
+    variables,
+    degreeGpe,
+    coefficientGpe,
+    leadingCoefficientGpe,
+    coeffVarMonomial,
+    collectTerms,
+    algebraicExpand,
+    denom,
+    numer,
+  )
+where
 
+import Control.Applicative ((<|>))
 import Control.Monad (foldM)
+import Control.Monad.Error.Class (MonadError (throwError))
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
-import qualified Data.HashSet as HS
-import Data.Text (Text)
-import SymHask.Symbolic
-import Control.Applicative ((<|>))
 import Data.Maybe (catMaybes)
-import SymHask.Symbolic.Simplification ((.+.), (.*.), (./.), (.**.))
-import SymHask.Symbolic.Basic.Utils (eitherToMaybe)
-import SymHask.Symbolic.Basic (setFreeOf, freeOf)
-import qualified Data.HashMap.Strict as HM
+import Data.Text (Text)
 import Data.Tuple (swap)
+import SymHask.Symbolic
+import SymHask.Symbolic.Basic (freeOf, setFreeOf)
+import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum, eitherToMaybe)
+import SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (./.))
 
 -- | Check whether an expression is a monomial in a single variable.
 --
@@ -46,9 +51,10 @@ isMonomialSv _ _ = False
 --
 -- A polynomial is either a monomial or a sum whose operands are all monomials.
 isPolynomialSv :: SimplifiedExpr -> Text -> Bool
-isPolynomialSv expr x = isMonomialSv expr x || case expr of
-  Sum' terms -> all (`isMonomialSv` x) (NE.toList terms)
-  _ -> False
+isPolynomialSv expr x =
+  isMonomialSv expr x || case expr of
+    Sum' terms -> all (`isMonomialSv` x) (NE.toList terms)
+    _ -> False
 
 -- | Compute the degree of a monomial in a single variable.
 --
@@ -62,8 +68,6 @@ isPolynomialSv expr x = isMonomialSv expr x || case expr of
 degreeMonomialSv :: SimplifiedExpr -> Text -> Maybe Integer
 degreeMonomialSv expr x = snd <$> monomialSummary expr x
 
-
-
 -- | Compute the degree of a polynomial in a single variable.
 --
 -- For a monomial, returns its degree.
@@ -76,13 +80,14 @@ degreeMonomialSv expr x = snd <$> monomialSummary expr x
 -- degreeSv ((x+1)*(x+3)) "x" = Nothing (not a polynomial, product of sums)
 -- degreeSv (3) "x" = Just 0
 degreeSv :: SimplifiedExpr -> Text -> Maybe Integer
-degreeSv expr x = degreeMonomialSv expr x <|> case expr of
-  Sum' terms ->
-    let degrees = [degreeMonomialSv term x | term <- NE.toList terms]
-    in if Nothing `notElem` degrees
-      then Just $ maximum (catMaybes degrees)
-      else Nothing
-  _ -> Nothing
+degreeSv expr x =
+  degreeMonomialSv expr x <|> case expr of
+    Sum' terms ->
+      let degrees = [degreeMonomialSv term x | term <- NE.toList terms]
+       in if Nothing `notElem` degrees
+            then Just $ maximum (catMaybes degrees)
+            else Nothing
+    _ -> Nothing
 
 -- | Compute the coefficient of x^j in a polynomial in a single variable.
 --
@@ -94,7 +99,7 @@ coefficientSv expr x j
   | not (isPolynomialSv expr x) =
       Left $
         UnsupportedOperation
-        "coefficientSv: expression is not a polynomial"
+          "coefficientSv: expression is not a polynomial"
   | otherwise = case expr of
       Sum' terms -> foldM addTerm (mkNumber 0) (NE.toList terms)
       _ -> coefficientMonomialSv expr x j
@@ -121,14 +126,16 @@ coefficientMonomialSv expr x j
 leadingCoefficientSv :: SimplifiedExpr -> Text -> EvalResult SimplifiedExpr
 leadingCoefficientSv expr x =
   case degreeSv expr x of
-    Nothing -> Left $
-      UnsupportedOperation
-      "leadingCoefficientSv: expression is not a polynomial"
+    Nothing ->
+      Left $
+        UnsupportedOperation
+          "leadingCoefficientSv: expression is not a polynomial"
     Just degree ->
       case coefficientSv expr x degree of
-        Left _ -> Left $
-          UnsupportedOperation
-          "leadingCoefficientSv: unable to compute leading coefficient"
+        Left _ ->
+          Left $
+            UnsupportedOperation
+              "leadingCoefficientSv: unable to compute leading coefficient"
         Right coeff -> pure coeff
 
 -- | Extract (coefficient, degree) for a monomial in x.
@@ -138,7 +145,7 @@ leadingCoefficientSv expr x =
 -- For constants, deg = 0.
 -- Returns Nothing if the expression is not a monomial.
 monomialSummary :: SimplifiedExpr -> Text -> Maybe (SimplifiedExpr, Integer)
-monomialSummary (Number' 0) _ = Nothing  -- Zero is special (degree -∞)
+monomialSummary (Number' 0) _ = Nothing -- Zero is special (degree -∞)
 monomialSummary (Number' n) _ = Just (mkNumber n, 0)
 monomialSummary expr@(Fraction' _ _) _ = Just (expr, 0)
 monomialSummary (Symbol' s) x
@@ -164,13 +171,14 @@ monomialSummary _ _ = Nothing
 isMonomialGpe :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Bool
 isMonomialGpe u vars
   | HS.null vars = True
-  | u `HS.member` vars = True  -- GME-2: u is a generalized variable
+  | u `HS.member` vars = True -- GME-2: u is a generalized variable
   | otherwise = case u of
-      Power' b (Number' e) -> -- GME-3: x^n where x in vars and n > 1
+      Power' b (Number' e) ->
+        -- GME-3: x^n where x in vars and n > 1
         (b `HS.member` vars && e > 1) || setFreeOf u (HS.toList vars)
       Product' factors ->
-        all (`isMonomialGpe` vars) (NE.toList factors)  -- GME-4: product of GMEs
-      _ -> setFreeOf u (HS.toList vars)  -- GME-1: free of all variables
+        all (`isMonomialGpe` vars) (NE.toList factors) -- GME-4: product of GMEs
+      _ -> setFreeOf u (HS.toList vars) -- GME-1: free of all variables
 
 -- | Check if an expression is a general polynomial in a set of generalized variables.
 --
@@ -179,10 +187,10 @@ isMonomialGpe u vars
 -- - GPE-2: u is a sum where each operand is a GME in S
 isPolynomialGpe :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Bool
 isPolynomialGpe u vars
-  | u `HS.member` vars = True  -- Short-circuit: u is itself a generalized variable (GME-2)
+  | u `HS.member` vars = True -- Short-circuit: u is itself a generalized variable (GME-2)
   | otherwise = case u of
-      Sum' terms -> all (`isMonomialGpe` vars) (NE.toList terms)  -- GPE-2
-      _ -> isMonomialGpe u vars  -- GPE-1
+      Sum' terms -> all (`isMonomialGpe` vars) (NE.toList terms) -- GPE-2
+      _ -> isMonomialGpe u vars -- GPE-1
 
 -- | Compute the natural set of generalized variables for an expression.
 variables :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
@@ -227,16 +235,15 @@ monomialGpeDegree (Number' 0) _ = Nothing
 monomialGpeDegree (Number' _) _ = Just 0
 monomialGpeDegree (Fraction' _ _) _ = Just 0
 monomialGpeDegree expr vars
-  | expr `HS.member` vars = Just 1  -- expr itself is a generalized variable
+  | expr `HS.member` vars = Just 1 -- expr itself is a generalized variable
   | otherwise = case expr of
-      Symbol' _ -> Just 0  -- symbol not in vars
+      Symbol' _ -> Just 0 -- symbol not in vars
       Power' b (Number' e) ->
         if b `HS.member` vars && e > 1 then Just e else Just 0
       Product' factors -> do
         ds <- mapM (`monomialGpeDegree` vars) (NE.toList factors)
         return $ sum ds
       _ -> Just 0
-
 
 -- | Extract (coefficient, degree) for a monomial w.r.t. a single generalized variable.
 -- Returns Left when the operand is not a monomial in the generalized variable.
@@ -266,7 +273,6 @@ coefficientMonomialGpe u x
       | u `freeOf` x = pure (u, 0)
       | otherwise = Left $ UnsupportedOperation "coefficientMonomialGpe: not a monomial"
 
-
 -- | Coefficient_gpe(u, x, j): coefficient of x^j in polynomial u (generalized var x).
 -- Returns Left if u is not a polynomial in x; otherwise returns the coefficient (possibly 0).
 coefficientGpe :: SimplifiedExpr -> SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
@@ -283,7 +289,6 @@ coefficientGpe u x j
       (c, m) <- coefficientMonomialGpe term x
       if m == j then acc .+. c else pure acc
 
-
 -- | Leading_coefficient_gpe(u, x): leading coefficient of u with respect to
 -- the generalized variable x. Returns Left when u is not a GPE in x.
 leadingCoefficientGpe :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
@@ -296,7 +301,6 @@ leadingCoefficientGpe u x = do
       Left _ -> Left $ UnsupportedOperation "leadingCoefficientGpe: unable to compute leading coefficient"
       Right coeff -> pure coeff
 
-
 -- | Extract coefficient and variable parts of a monomial w.r.t. a set of generalized variables.
 -- Returns (coefficient, variable_part) where the monomial = coefficient * variable_part.
 -- For a monomial that doesn't contain any variables in S, returns (monomial, 1).
@@ -305,13 +309,13 @@ coeffVarMonomial u vars
   | HS.null vars = pure (u, mkNumber 1)
   | not $ isMonomialGpe u vars = Left $ UnsupportedOperation "coeffVarMonomial: expression is a monomial, not a product of coefficient and variable part"
   | setFreeOf u (HS.toList vars) = pure (u, mkNumber 1)
-  | u `HS.member` vars = pure (mkNumber 1, u)  -- u itself is a variable
+  | u `HS.member` vars = pure (mkNumber 1, u) -- u itself is a variable
   | otherwise = case u of
       Number' _ -> pure (u, mkNumber 1)
       Fraction' _ _ -> pure (u, mkNumber 1)
       Power' b (Number' e) ->
         if b `HS.member` vars && e > 1
-          then pure (mkNumber 1, u)  -- power of variable
+          then pure (mkNumber 1, u) -- power of variable
           else pure (u, mkNumber 1)
       Product' factors -> decomposeProduct (NE.toList factors) vars
       _ -> pure (u, mkNumber 1)
@@ -324,7 +328,6 @@ coeffVarMonomial u vars
       varPart <- foldM (.*.) (mkNumber 1) varParts
       pure (coeff, varPart)
 
-
 -- | Collect like terms in a general polynomial expression.
 -- Returns the collected form of u, or Undefined (Left) if u is not a GPE in S.
 -- In collected form, u is a GME in S or a sum of GMEs with distinct variable parts.
@@ -332,11 +335,10 @@ collectTerms :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> EvalResult Simpli
 collectTerms u vars
   | not (isPolynomialGpe u vars) =
       Left $ UnsupportedOperation "collectTerms: expression is not a GPE"
-  | u `HS.member` vars = pure u  -- already a single variable, which is a GME
+  | u `HS.member` vars = pure u -- already a single variable, which is a GME
   | otherwise = case u of
       Sum' terms -> collectFromSum (NE.toList terms) vars
-      _ -> pure u  -- already a single monomial, in collected form
-
+      _ -> pure u -- already a single monomial, in collected form
 
 -- | Helper to collect terms from a sum by grouping by variable part.
 collectFromSum :: [SimplifiedExpr] -> HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
@@ -362,27 +364,180 @@ collectFromSum operands vars = do
       case NE.nonEmpty termResults of
         Nothing -> pure $ mkNumber 0
         Just termList -> simplify $ mkSum termList
--- collectFromSum operands vars = do
---   -- Extract coefficient and variable part for each operand
---   pairs <- mapM (`coeffVarMonomial` vars) operands
 
---   -- Group terms in first-occurrence order, combining only matching variable parts.
---   groupedPairs <- foldM insertPair [] pairs
+-- | Algebraic_expand for integer-exponent case.
+-- Expands sums, products and integer powers (n >= 2) recursively.
+-- Macsyma-style extension (Properties 1 & 2):
+--   1. Each complete sub-expression is in expanded form.
+--   2. The denominator of each complete sub-expression is in expanded form.
+-- Handles: function arguments are recursively expanded, and denominators
+-- (represented as negative powers) are expanded and checked for zero.
+algebraicExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
+algebraicExpand u = do
+  n <- numer u
+  d <- denom u
+  n' <- expandCore n
+  d' <- expandCore d
+  if d' == mkNumber 0
+    then throwError DivisionByZero
+    else
+      if d' == mkNumber 1
+        then pure n'
+        else n' ./. d'
 
---   case NE.nonEmpty groupedPairs of
---     Nothing -> pure $ mkNumber 0
---     Just groupedList -> do
---       termResults <- mapM (\(coef, varPart) -> coef .*. varPart) groupedList
---       -- groupedList is NonEmpty, so termResults will be NonEmpty as well
---       simplify $ mkSum  termResults
---   where
---     insertPair :: [(SimplifiedExpr, SimplifiedExpr)] -> (SimplifiedExpr, SimplifiedExpr) -> EvalResult [(SimplifiedExpr, SimplifiedExpr)]
---     insertPair [] pair = pure [pair]
---     insertPair ((existingCoef, existingVarPart) : rest) pair@(coef, varPart)
---       | existingVarPart == varPart = do
---           summed <- existingCoef .+. coef
---           pure ((summed, existingVarPart) : rest)
---       | otherwise = do
---           updatedRest <- insertPair rest pair
---           pure ((existingCoef, existingVarPart) : updatedRest)
+-- | Core structural expander used after numerator/denominator splitting.
+-- This keeps the recursive expansion logic local to sums, products, powers,
+-- and functions, while `algebraicExpand` handles quotient-like expressions by
+-- splitting them first with `numer` and `denom`.
+expandCore :: SimplifiedExpr -> EvalResult SimplifiedExpr
+expandCore u = case u of
+  Sum' (f :| []) -> pure f
+  Sum' (f :| rest) -> do
+    let first = f
+    restSum <- buildRestSum rest
+    left <- expandCore first
+    right <- expandCore restSum
+    left .+. right
+  Product' (f :| []) -> pure f
+  Product' (f :| rest) -> do
+    let first = f
+    restProd <- buildRestProduct rest
+    r1 <- expandCore first
+    r2 <- expandCore restProd
+    expandProduct r1 r2
+  Power' base (Number' n) | n >= 2 -> do
+    b' <- expandCore base
+    expandPower b' n
+  Power' base (Fraction' num den)
+    | num > 0 && den > 0 -> do
+        b' <- expandCore base
+        expandRationalPower b' num den
+  Function' fname args -> do
+    expandedArgs <- mapM expandCore (NE.toList args)
+    case NE.nonEmpty expandedArgs of
+      Just argList -> pure $ mkFunction fname argList
+      Nothing -> pure u
+  _ -> pure u
 
+-- | Helper to recursively expand products and powers formed during expansion.
+-- We only recurse when the expression still contains a genuinely expandable
+-- sum or a power with an expandable base. This avoids re-entering on stable
+-- products like x*y, which would otherwise loop forever.
+tryExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
+tryExpand expr
+  | needsFurtherExpansion expr = expandCore expr
+  | otherwise = pure expr
+  where
+    needsFurtherExpansion :: SimplifiedExpr -> Bool
+    needsFurtherExpansion = \case
+      Sum' _ -> True
+      Product' factors -> any needsFurtherExpansion (NE.toList factors)
+      Power' base (Number' n) -> n > 1 && not (isAtomic base) && needsFurtherExpansion base
+      UnaryDiff' x -> needsFurtherExpansion x
+      BinaryDiff' x y -> needsFurtherExpansion x || needsFurtherExpansion y
+      Factorial' x -> needsFurtherExpansion x
+      Function' _ args -> any needsFurtherExpansion (NE.toList args)
+      _ -> False
+
+-- | Expand_product as in pseudocode: expand product of two expanded expressions.
+-- After computing the product, recursively expand any newly formed structures.
+expandProduct :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+expandProduct (Sum' (f :| rest)) s = do
+  rRem <- buildRestSum rest
+  left <- expandProduct f s
+  right <- expandProduct rRem s
+  left .+. right
+expandProduct r s@(Sum' (_ :| _)) = expandProduct s r
+expandProduct r s = do
+  prod <- r .*. s
+  -- Recursively expand if the result contains unexpanded products or powers
+  tryExpand prod
+
+-- | Expand_power: expand (u)^n where n >= 2 and u is expanded.
+-- After expansion, recursively expand any newly formed structures.
+expandPower :: SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
+expandPower u n
+  | n <= 0 = pure $ mkNumber 1
+  | n == 1 = pure u
+  | otherwise = case u of
+      Sum' (f :| rest) -> do
+        r <- buildRestSum rest
+        -- binomial-like expansion via recursion
+        let ks = [0 .. n]
+        terms <- mapM (expandTerm f r n) ks
+        case NE.nonEmpty terms of
+          Nothing -> pure $ mkNumber 0
+          Just tlist -> do
+            result <- simplify $ mkSum tlist
+            -- Recursively expand the result in case it contains unexpanded products/powers
+            tryExpand result
+      _ -> do
+        result <- simplify $ mkPower u (mkNumber n)
+        -- Recursively expand if result is a product or power that might need expansion
+        tryExpand result
+  where
+    -- expand term for a given k: c * f^(n-k) * Expand_power(r,k)
+    expandTerm f r n' k = do
+      let c = binomial n' k
+      leftPow <- simplify $ mkPower f (mkNumber (n' - k))
+      rightPow <- expandPower r k
+      leftTerm <- mkNumber c .*. leftPow
+      expandProduct leftTerm rightPow
+
+-- | Expand a positive fractional power by splitting the exponent into its
+-- integer part and fractional remainder:
+--   u^(q + m) = u^m * u^q,  where  q = floor(f), m = f - floor(f).
+expandRationalPower :: SimplifiedExpr -> Integer -> Integer -> EvalResult SimplifiedExpr
+expandRationalPower u num den = do
+  let (wholePart, remainder) = num `divMod` den
+      fractionalPart = mkFraction remainder den
+
+  wholeExpanded <-
+    if wholePart <= 0
+      then pure $ mkNumber 1
+      else expandPower u wholePart
+
+  if remainder == 0
+    then pure wholeExpanded
+    else do
+      fractionalExpanded <- simplify $ mkPower u fractionalPart
+      if wholeExpanded == mkNumber 1
+        then pure fractionalExpanded
+        else expandProduct fractionalExpanded wholeExpanded
+
+-- integer binomial
+binomial :: Integer -> Integer -> Integer
+binomial n k
+  | k < 0 || k > n = 0
+  | otherwise = product [n - k + 1 .. n] `div` product [1 .. k]
+
+-- Returns the numerator of an expression
+numer :: SimplifiedExpr -> EvalResult SimplifiedExpr
+numer (Fraction' n _) = pure $ mkNumber n
+numer u@(Power' _ (Number' e)) =
+  if e < 0 then pure $ mkNumber 1 else pure u
+numer u@(Power' _ (Fraction' num _)) =
+  if num < 0 then pure $ mkNumber 1 else pure u
+numer (Product' (f :| rest)) = do
+  fNum <- numer f
+  rest' <- simplify . mkProduct . NE.fromList $ rest
+  restNum <- numer rest'
+  fNum .*. restNum
+numer u = pure u
+
+denom :: SimplifiedExpr -> EvalResult SimplifiedExpr
+denom (Fraction' _ d) = pure $ mkNumber d
+denom u@(Power' _ (Number' e)) =
+  if e < 0
+    then simplify $ mkPower u (mkNumber (-1))
+    else pure $ mkNumber 1
+denom u@(Power' _ (Fraction' num _)) =
+  if num < 0
+    then simplify $ mkPower u (mkNumber (-1))
+    else pure $ mkNumber 1
+denom (Product' (f :| rest)) = do
+  fDenom <- denom f
+  rest' <- simplify . mkProduct . NE.fromList $ rest
+  restDenom <- denom rest'
+  fDenom .*. restDenom
+denom _ = pure $ mkNumber 1
