@@ -8,7 +8,29 @@ where
 import qualified Data.HashSet as HS
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import SymHask.Symbolic (ExprError (..), SimplifiedExpr, Simplify (simplify), UnsimplifiedExpr, mkFraction, mkFunction, mkNumber, mkSymbol)
-import SymHask.Symbolic.Basic.Polynomial (algebraicExpand, coeffVarMonomial, coefficientGpe, coefficientSv, collectTerms, degreeGpe, degreeMonomialSv, degreeSv, isMonomialGpe, isMonomialSv, isPolynomialGpe, isPolynomialSv, leadingCoefficientGpe, leadingCoefficientSv, variables, numer, denom)
+import SymHask.Symbolic.Basic.Polynomial
+  ( algebraicExpand,
+    coeffVarMonomial,
+    coefficientGpe,
+    coefficientSv,
+    collectTerms,
+    degreeGpe,
+    degreeMonomialSv,
+    degreeSv,
+    denom,
+    isMonomialGpe,
+    isMonomialSv,
+    isPolynomialGpe,
+    isPolynomialSv,
+    isRationalGre,
+    leadingCoefficientGpe,
+    leadingCoefficientSv,
+    numer,
+    rationalExpand,
+    rationalVariables,
+    rationalise,
+    variables,
+  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 import TestUtils (simplifyOrFail)
@@ -33,7 +55,11 @@ tests =
       collectTermsTests,
       coeffVarMonomialTests,
       denomTests,
-      numerTests
+      numerTests,
+      rationalVariablesTests,
+      rationaliseTests,
+      rationalGreTests,
+      rationalExpandTests
     ]
 
 monomialTests :: TestTree
@@ -702,7 +728,7 @@ algebraicExpandTests =
                   (x ** 4) * (y ** 2)
                     + 2 * x ** 4 * y
                     + x ** 4
-                    -- The term 4 * (x ** 3) * (yPlus1 ** (3 / 2)) 
+                    -- The term 4 * (x ** 3) * (yPlus1 ** (3 / 2))
                     -- with fractional exponent should be fully expanded
                     + 4 * (x ** 3) * (yPlus1 ** (1 / 2))
                     + 4 * (x ** 3) * y * (yPlus1 ** (1 / 2))
@@ -786,19 +812,19 @@ numerTests =
         case numer (simplifyOrFail expr) of
           Right out -> simplifyOrFail expected @?= out
           Left e -> fail $ "numer failed: " ++ show e,
-        testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 2*x*(x + 1)*y^n" $ do
-          let x = mkSymbol "x" :: UnsimplifiedExpr
-              y = mkSymbol "y" :: UnsimplifiedExpr
-              n = mkSymbol "n" :: UnsimplifiedExpr
-              expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
-              expected = mkNumber 2 * x * (x + mkNumber 1) * (y ** n)
-          case numer (simplifyOrFail expr) of
-            Right out -> simplifyOrFail expected @?= out
-            Left e -> fail $ "numer failed: " ++ show e
+      testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 2*x*(x + 1)*y^n" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            n = mkSymbol "n" :: UnsimplifiedExpr
+            expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
+            expected = mkNumber 2 * x * (x + mkNumber 1) * (y ** n)
+        case numer (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "numer failed: " ++ show e
     ]
 
 denomTests :: TestTree
-denomTests = 
+denomTests =
   testGroup
     "denom"
     [ testCase "denom of (x^2 + 1)/(x + 1) is x + 1" $ do
@@ -836,13 +862,141 @@ denomTests =
         case denom (simplifyOrFail expr) of
           Right out -> simplifyOrFail expected @?= out
           Left e -> fail $ "denom failed: " ++ show e,
-        testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 3*(x + 2)" $ do
-          let x = mkSymbol "x" :: UnsimplifiedExpr
-              y = mkSymbol "y" :: UnsimplifiedExpr
-              n = mkSymbol "n" :: UnsimplifiedExpr
-              expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
-              expected = mkNumber 3 * (x + mkNumber 2)
-          case denom (simplifyOrFail expr) of
-            Right out -> simplifyOrFail expected @?= out
-            Left e -> fail $ "denom failed: " ++ show e
+      testCase "numer of (2/3)*((x*(x + 1))/(x + 2))*y^n is 3*(x + 2)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            n = mkSymbol "n" :: UnsimplifiedExpr
+            expr = (mkNumber 2 / mkNumber 3) * ((x * (x + mkNumber 1)) / (x + mkNumber 2)) * (y ** n)
+            expected = mkNumber 3 * (x + mkNumber 2)
+        case denom (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "denom failed: " ++ show e
+    ]
+
+rationalGreTests :: TestTree
+rationalGreTests =
+  testGroup
+    "isRationalGre"
+    [ testCase "(x^2 + 1)/(2*x + 3) is rational in {x}" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x ** (2 :: UnsimplifiedExpr) + mkNumber 1) / (mkNumber 2 * x + mkNumber 3)
+        isRationalGre (simplifyOrFail expr) (HS.fromList [simplifyOrFail x]) @?= True,
+      testCase "1/x + 1/y is not rational in {x,y}" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = mkNumber 1 / x + mkNumber 1 / y
+        isRationalGre (simplifyOrFail expr) (HS.fromList [simplifyOrFail x, simplifyOrFail y]) @?= False
+    ]
+
+rationalVariablesTests :: TestTree
+rationalVariablesTests =
+  testGroup
+    "rationalVariables"
+    [ testCase "Rational_variables((2*x + 3*y)/(z + 4)) -> {x, y, z}" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            z = mkSymbol "z" :: UnsimplifiedExpr
+            expr = (mkNumber 2 * x + mkNumber 3 * y) / (z + mkNumber 4)
+        case rationalVariables (simplifyOrFail expr) of
+          Right out -> out @?= HS.fromList [simplifyOrFail x, simplifyOrFail y, simplifyOrFail z]
+          Left e -> fail $ "rationalVariables failed: " ++ show e,
+      testCase "Rational_variables(1/x + 1/y) -> {1/x, 1/y}" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = mkNumber 1 / x + mkNumber 1 / y
+        case rationalVariables (simplifyOrFail expr) of
+          Right out ->
+            out
+              @?= HS.fromList
+                [ simplifyOrFail (mkNumber 1 / x),
+                  simplifyOrFail (mkNumber 1 / y)
+                ]
+          Left e -> fail $ "rationalVariables failed: " ++ show e
+    ]
+
+rationaliseTests :: TestTree
+rationaliseTests =
+  testGroup
+    "rationalise"
+    [ testCase "rationalise((1 + 1/x)^2) -> (x + 1)^2 / x^2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (mkNumber 1 + mkNumber 1 / x) ** (2 :: UnsimplifiedExpr)
+            expected = ((x + mkNumber 1) ** (2 :: UnsimplifiedExpr)) / (x ** (2 :: UnsimplifiedExpr))
+        case rationalise (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalise failed: " ++ show e,
+      testCase "rationalise((1 + 1/x)^(1/2)) -> ((x + 1)/x)^(1/2)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (mkNumber 1 + mkNumber 1 / x) ** mkFraction 1 2
+            expected = ((x + mkNumber 1) / x) ** mkFraction 1 2
+        case rationalise (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalise failed: " ++ show e,
+      testCase "rationalise(1/(1 + 1/x)^(1/2) + (1 + 1/x)^(3/2)) -> (x^2 + (x + 1)^2) / (x^2 * ((x + 1)/x)^(1/2))" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            u = mkNumber 1 + mkNumber 1 / x
+            expr = mkNumber 1 / (u ** mkFraction 1 2) + (u ** mkFraction 3 2)
+            expected = (x ** (2 :: UnsimplifiedExpr) + (x + mkNumber 1) ** (2 :: UnsimplifiedExpr)) / (x ** (2 :: UnsimplifiedExpr) * (((x + mkNumber 1) / x) ** mkFraction 1 2))
+        case rationalise (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalise failed: " ++ show e,
+      testCase "rationalise m/r + n/s -> (m*s + n*r) / (r*s)" $ do
+        let m = mkSymbol "m" :: UnsimplifiedExpr
+            n = mkSymbol "n" :: UnsimplifiedExpr
+            r = mkSymbol "r" :: UnsimplifiedExpr
+            s = mkSymbol "s" :: UnsimplifiedExpr
+            expr = m / r + n / s
+            expected = (m * s + n * r) / (r * s)
+        case rationalise (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalise failed: " ++ show e,
+      testCase "rationalise a/b + c/d + e/f -> (a*d*f + b*(c*f + d*e)) / (b*d*f)" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            c = mkSymbol "c" :: UnsimplifiedExpr
+            d = mkSymbol "d" :: UnsimplifiedExpr
+            e = mkSymbol "e" :: UnsimplifiedExpr
+            f = mkSymbol "f" :: UnsimplifiedExpr
+            expr = a / b + c / d + e / f
+            expected = (a * d * f + b * (c * f + d * e)) / (b * d * f)
+        case rationalise (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e' -> fail $ "rationalise failed: " ++ show e'
+    ]
+
+rationalExpandTests :: TestTree
+rationalExpandTests =
+  testGroup
+    "rationalExpand"
+    [ testCase "(sqrt(1 / ((x+y)^2 + 1)) + 1)*(sqrt(1 / ((x+y)^2 + 1)) - 1) / (x + 1) -> (-x^2 -2*x*y - y^2) / (x^3 + x^2 + 2x^2*y + 2*x*y + x*y^2 + y^2 + x + 1)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            innerSqrt = mkNumber 1 / ((x + y) ** 2 + mkNumber 1)
+            expr = (sqrt innerSqrt + 1) * (sqrt innerSqrt - 1) / (x + 1)
+            expected =
+              ( -(x ** 2)
+                  - 2 * x * y
+                  - y ** 2
+              )
+              / 
+              (x ** 3
+              + x ** 2
+              + 2 * x ** 2 * y
+              + 2 * x * y
+              + x * y ** 2
+              + y ** 2
+              + x 
+              + 1)
+        case rationalExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalExpand failed: " ++ show e,
+      testCase "1/(1/a + c/(a*b)) + ((a*b*c + a*c^2) / (b + c)^2) - a -> 0" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            c = mkSymbol "c" :: UnsimplifiedExpr
+            expr = 1 / (1 / a + c / (a * b)) + (a * b * c + a * c ** 2) / (b + c) ** 2 - a
+            expected = 0
+        case rationalExpand (simplifyOrFail expr) of
+          Right out -> simplifyOrFail expected @?= out
+          Left e -> fail $ "rationalExpand failed: " ++ show e
     ]
