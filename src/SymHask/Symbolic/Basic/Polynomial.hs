@@ -7,6 +7,9 @@ module SymHask.Symbolic.Basic.Polynomial
     leadingCoefficientSv,
     isMonomialGpe,
     isPolynomialGpe,
+    isRationalGre,
+    rationalise,
+    rationalVariables,
     variables,
     degreeGpe,
     coefficientGpe,
@@ -14,6 +17,7 @@ module SymHask.Symbolic.Basic.Polynomial
     coeffVarMonomial,
     collectTerms,
     algebraicExpand,
+    rationalExpand,
     denom,
     numer,
   )
@@ -28,7 +32,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import Data.Tuple (swap)
 import SymHask.Symbolic
 import SymHask.Symbolic.Basic (freeOf, setFreeOf)
 import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum, eitherToMaybe)
@@ -191,6 +194,71 @@ isPolynomialGpe u vars
   | otherwise = case u of
       Sum' terms -> all (`isMonomialGpe` vars) (NE.toList terms) -- GPE-2
       _ -> isMonomialGpe u vars -- GPE-1
+
+-- | Check whether an expression is a general rational expression (GRE)
+-- in a set of generalized variables.
+--
+-- A GRE in S is an expression whose numerator and denominator are both
+-- generalized polynomials in S.
+isRationalGre :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> Bool
+isRationalGre u vars =
+  either (const False) (`isPolynomialGpe` vars) (numer u)
+    && either (const False) (`isPolynomialGpe` vars) (denom u)
+
+-- | Compute the natural set of generalized variables for a rational expression.
+--
+-- A rational variable set is the union of the variables in the numerator and
+-- denominator of the expression.
+rationalVariables :: SimplifiedExpr -> EvalResult (HS.HashSet SimplifiedExpr)
+rationalVariables u = do
+  n <- numer u
+  d <- denom u
+  pure $ variables n `HS.union` variables d
+
+-- | Transform an algebraic expression into rationalized form.
+--
+-- This follows the recursive scheme from the text:
+-- - powers are rationalized by rationalizing their base,
+-- - products are rationalized operand-by-operand,
+-- - sums are rationalized by combining operands over a common denominator.
+rationalise :: SimplifiedExpr -> EvalResult SimplifiedExpr
+rationalise u = case u of
+  Power' base expn -> do
+    base' <- rationalise base
+    base' .**. expn
+  Product' (f :| []) -> rationalise f
+  Product' (f :| rest) -> do
+    restProd <- buildRestProduct rest
+    left <- rationalise f
+    right <- rationalise restProd
+    left .*. right
+  Sum' (f :| []) -> rationalise f
+  Sum' (f :| rest) -> do
+    restSum <- buildRestSum rest
+    g <- rationalise f
+    r <- rationalise restSum
+    rationaliseSum g r
+  _ -> pure u
+
+-- | Rationalize a sum of two already-rationalized expressions.
+--
+-- Uses the transformation m/r + n/s -> (m*s + n*r)/(r*s), and repeats
+-- until both addends are denominator-free.
+rationaliseSum :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+rationaliseSum u v = do
+  m <- numer u
+  r <- denom u
+  n <- numer v
+  s <- denom v
+  if r == mkNumber 1 && s == mkNumber 1
+    then u .+. v
+    else do
+      ms <- m .*. s
+      nr <- n .*. r
+      top <- ms .+. nr
+      bot <- r .*. s
+      merged <- top ./. bot
+      rationalise merged
 
 -- | Compute the natural set of generalized variables for an expression.
 variables :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
@@ -541,3 +609,36 @@ denom (Product' (f :| rest)) = do
   restDenom <- denom rest'
   fDenom .*. restDenom
 denom _ = pure $ mkNumber 1
+
+-- | Transform an algebraic expression to rational-expanded form.
+--
+-- Steps:
+-- 1. Rationalize the expression (bring to common denominators, etc.).
+-- 2. Extract numerator and denominator with `numer` / `denom`.
+-- 3. Algebraically expand numerator and denominator separately.
+-- 4. Reassemble; if denominator expands to 0 return DivisionByZero.
+rationalExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
+rationalExpand = go
+  where
+    go expr = do
+      next <- rationalExpandOnce expr
+      if next == expr
+        then pure next
+        else go next
+
+    rationalExpandOnce u = do
+      -- Step 1: rationalise the whole expression
+      r <- rationalise u
+      -- Step 2: extract numerator and denominator
+      n <- numer r
+      d <- denom r
+      -- Step 3: expand numerator and denominator
+      n' <- algebraicExpand n
+      d' <- algebraicExpand d
+      -- Step 4: check denominator and reassemble
+      if d' == mkNumber 0
+        then throwError DivisionByZero
+        else if d' == mkNumber 1
+          then pure n'
+          else n' ./. d'
+
