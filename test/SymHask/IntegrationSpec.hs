@@ -27,6 +27,7 @@ tests =
 
 -- ============================================================================
 
+integrationTableTests :: TestTree
 integrationTableTests :: TestTree =
   testGroup
     "Integration Table"
