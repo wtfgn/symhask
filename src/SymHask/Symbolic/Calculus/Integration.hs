@@ -19,15 +19,15 @@ import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import SymHask.Symbolic
 import SymHask.Symbolic.Basic
-  ( freeOf,
+  ( Pattern (..),
+    Replacement (..),
+    freeOf,
     separateFactors,
     subs,
     treeSize,
     trialSubstitutions,
-    Pattern (..),
-    Replacement (..),
   )
-
+import SymHask.Symbolic.Basic.Polynomial (algebraicExpand)
 import SymHask.Symbolic.Basic.Utils (eitherToMaybe)
 import SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
 import SymHask.Symbolic.Simplification ((.**.), (.*.), (./.))
@@ -41,8 +41,11 @@ import SymHask.Symbolic.Simplification ((.**.), (.*.), (./.))
 -- | Integration variable, similar to DiffVar
 newtype IntegrationVar
   = IntSymbol Text -- Variable symbol
-  deriving (-- | IntFunction Text (NE.NonEmpty Text) -- Undefined functions
-            Eq, Show)
+  deriving
+    ( -- | IntFunction Text (NE.NonEmpty Text) -- Undefined functions
+      Eq,
+      Show
+    )
 
 -- | Rule in the integration table
 data IntegrationRule = IntegrationRule
@@ -463,7 +466,7 @@ integrateLinear expr var = case expr of
 -- Tries candidates from `trialSubstitutions` and checks whether
 -- f / d(v(x))/dx can be rewritten as u(v) that is free of x.
 integrateSubstitution :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSubstitution expr var@(integrationVarToExpr -> xExpr) = do
+integrateSubstitution expr (integrationVarToExpr -> xExpr) = do
   dVar <- eitherToMaybe $ mkDiffVar xExpr
   let candidates = sortOn (negate . treeSize) $ filter eligible $ HS.toList $ trialSubstitutions expr
   tryCandidates dVar candidates
@@ -492,7 +495,14 @@ integrateSubstitution expr var@(integrationVarToExpr -> xExpr) = do
         else Nothing
 
 integrate :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrate expr var 
-  = integrateTable expr var 
-  <|> integrateLinear expr var
-  <|> integrateSubstitution expr var 
+integrate expr var =
+  integrateTable expr var
+    <|> integrateLinear expr var
+    <|> integrateSubstitution expr var
+    -- algebraic expand, if it changes the expression, try again with the expanded form
+    <|> ( eitherToMaybe (algebraicExpand expr)
+            >>= \expanded ->
+              if expanded /= expr
+                then integrate expanded var
+                else Nothing
+        )
