@@ -155,27 +155,32 @@ contractExp u@(Symbol' _) = pure u
 contractExp u = mapOperands contractExp u >>= contractExpRules
 
 contractExpRules :: SimplifiedExpr -> EvalResult SimplifiedExpr
-contractExpRules (expandMainOp -> Right v) = case v of
-  Power' (Exp' x) s -> do
-    p <- x .*. s
-    if isProduct p || isPower p
-      then Exp' <$> contractExpRules p
-      else return $ Exp' p
-  Product' factors ->
-    case foldM combineExpFactors (mkNumber 1, mkNumber 0) factors of
-      Right (p, s) -> if isZero s then pure v else Exp' s .*. p
-      Left err -> Left err
-  Sum' terms -> foldM combineExpTerms (mkNumber 0) terms
-  _ -> pure v
+contractExpRules u = do
+  v <- expandMainOp u
+  case v of
+    Power' (Exp' x) s -> do
+      p <- x .*. s
+      contracted <- if needsFurtherContraction p then contractExpRules p else return p
+      pure $ Exp' contracted
+    Product' factors -> do
+      (p, s) <- foldM combineExpFactors (mkNumber 1, mkNumber 0) factors
+      if isZero s then return v else Exp' s .*. p
+    Sum' terms -> foldM combineExpTerms (mkNumber 0) terms
+    _ -> pure v
   where
+    needsFurtherContraction expr = isProduct expr || isPower expr
+
     combineExpFactors (p, s) factor = case factor of
-      Exp' n -> s .+. n >>= \s' -> return (p, s')
-      _ -> p .*. factor >>= \p' -> return (p', s)
-    combineExpTerms acc term = case term of
-      Product'  _ -> contractExpRules term >>= (acc .+.)
-      Power' _ _ -> contractExpRules term >>= (acc .+.)
-      _ -> acc .+. term
-contractExpRules (expandMainOp -> Left err) = throwError err
+      Exp' n -> do
+        s' <- s .+. n
+        return (p, s')
+      _ -> do
+        p' <- p .*. factor
+        return (p', s)
+
+    combineExpTerms acc term
+      | isProduct term || isPower term = contractExpRules term >>= (acc .+.)
+      | otherwise = acc .+. term
 
 -- | Substitute trigonometric functions tan/cot/sec/csc with sin/cos representations.
 --
