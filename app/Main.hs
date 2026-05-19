@@ -14,6 +14,7 @@ import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic
 import           SymHask.Symbolic.Calculus
 import           SymHask.Symbolic.Simplification ()
+import  SymHask.Symbolic.Transcendental
 
 testDiff :: UnsimplifiedExpr -> Text -> IO ()
 testDiff expr varName = do
