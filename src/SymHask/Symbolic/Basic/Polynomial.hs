@@ -17,6 +17,7 @@ module SymHask.Symbolic.Basic.Polynomial
     coeffVarMonomial,
     collectTerms,
     algebraicExpand,
+    expandMainOp,
     rationalExpand,
     denom,
     numer,
@@ -642,3 +643,80 @@ rationalExpand = go
           then pure n'
           else n' ./. d'
 
+-- | Expand only the main operator of an expression.
+--
+-- Sums are left unchanged. Products are distributed over immediate sum
+-- operands, and powers with a positive integer exponent are expanded only
+-- against the top-level sum in the base. Nested sums and powers are left
+-- intact until a later pass expands them.
+expandMainOp :: SimplifiedExpr -> EvalResult SimplifiedExpr
+expandMainOp u@(Number' _) = pure u
+expandMainOp u@(Fraction' _ _) = pure u
+expandMainOp u@(Symbol' _) = pure u
+expandMainOp u@(Sum' _) = pure u
+expandMainOp (Product' factors) = expandMainProduct (NE.toList factors)
+expandMainOp (Power' base (Number' n))
+  | n >= 2 = expandMainPower base n
+expandMainOp (Power' base (Fraction' num den))
+  | num > 0 && den > 0 = expandMainRationalPower base num den
+expandMainOp u = pure u
+
+expandMainProduct :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
+expandMainProduct [] = pure $ mkNumber 1
+expandMainProduct [x] = pure x
+expandMainProduct [r, s] = expandMainProductPair r s
+expandMainProduct (x : xs) = do
+  rest <- expandMainProduct xs
+  expandMainProductPair x rest
+
+expandMainProductPair :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+expandMainProductPair (Sum' (f :| rest)) s = do
+  r <- buildRestSum rest
+  left <- expandMainProductPair f s
+  right <- expandMainProductPair r s
+  left .+. right
+expandMainProductPair r (Sum' (f :| rest)) = do
+  sRest <- buildRestSum rest
+  left <- expandMainProductPair r f
+  right <- expandMainProductPair r sRest
+  left .+. right
+expandMainProductPair r s = simplify $ mkProduct (r :| [s])
+
+expandMainPower :: SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
+expandMainPower u n
+  | n <= 0 = pure $ mkNumber 1
+  | n == 1 = pure u
+  | otherwise = case u of
+      Sum' (f :| rest) -> do
+        r <- buildRestSum rest
+        terms <- mapM (expandMainPowerTerm f r n) [0 .. n]
+        case NE.nonEmpty terms of
+          Nothing -> pure $ mkNumber 0
+          Just tlist -> simplify $ mkSum tlist
+      _ -> simplify $ mkPower u (mkNumber n)
+
+expandMainPowerTerm :: SimplifiedExpr -> SimplifiedExpr -> Integer -> Integer -> EvalResult SimplifiedExpr
+expandMainPowerTerm f r n' k = do
+  let c = binomial n' k
+  leftPow <- simplify $ mkPower f (mkNumber (n' - k))
+  rightPow <- simplify $ mkPower r (mkNumber k)
+  coeff <- mkNumber c .*. leftPow
+  coeff .*. rightPow
+
+expandMainRationalPower :: SimplifiedExpr -> Integer -> Integer -> EvalResult SimplifiedExpr
+expandMainRationalPower u num den = do
+  let (wholePart, remainder) = num `divMod` den
+      fractionalPart = mkFraction remainder den
+
+  wholeExpanded <-
+    if wholePart <= 0
+      then pure $ mkNumber 1
+      else expandMainPower u wholePart
+
+  if remainder == 0
+    then pure wholeExpanded
+    else do
+      fractionalExpanded <- simplify $ mkPower u fractionalPart
+      if wholeExpanded == mkNumber 1
+        then pure fractionalExpanded
+        else simplify $ mkProduct (fractionalExpanded :| [wholeExpanded])

@@ -18,6 +18,7 @@ import SymHask.Symbolic.Basic.Polynomial
     degreeMonomialSv,
     degreeSv,
     denom,
+    expandMainOp,
     isMonomialGpe,
     isMonomialSv,
     isPolynomialGpe,
@@ -59,7 +60,8 @@ tests =
       rationalVariablesTests,
       rationaliseTests,
       rationalGreTests,
-      rationalExpandTests
+      rationalExpandTests,
+      expandMainOpTests
     ]
 
 monomialTests :: TestTree
@@ -999,4 +1001,116 @@ rationalExpandTests =
         case rationalExpand (simplifyOrFail expr) of
           Right out -> out @?= simplifyOrFail expected
           Left e -> fail $ "rationalExpand failed: " ++ show e
+    ]
+
+expandMainOpTests :: TestTree
+expandMainOpTests =
+  testGroup
+    "expandMainOp"
+    [ testCase "numbers pass through unchanged" $ do
+        let expr = mkNumber 7 :: UnsimplifiedExpr
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expr
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "symbols pass through unchanged" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+        case expandMainOp (simplifyOrFail x) of
+          Right out -> out @?= simplifyOrFail x
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "sums pass through unchanged" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = 2 + x + (x ** 2)
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expr
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "x * (2 + (1 + x)^2) expands only the top-level product" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = x * (2 + ((1 + x) ** 2))
+            expected = 2 * x + x * ((1 + x) ** 2)
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(2 + (1 + x)^2) * x expands the right-hand product branch" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (2 + ((1 + x) ** 2)) * x
+            expected = 2 * x + ((1 + x) ** 2) * x
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "x^2 passes through unchanged" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = x ** 2
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expr
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(x + y)^2 expands only the outer power" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = (x + y) ** 2
+            expected = x ** 2 + 2 * x * y + y ** 2
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(x + y)^(3/2) keeps the fractional part intact" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = (x + y) ** mkFraction 3 2
+            expected = ((x + y) ** mkFraction 1 2) * (x + y)
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(x*(y + 1)^(3/2) + 1)*(x*(y + 1)^(3/2) - 1) expands to x^2*(y + 1)^3 - 1" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            term = x * (y + 1) ** mkFraction 3 2
+            expr = (term + 1) * (term - 1)
+            expected = x ** 2 * (y + 1) ** 3 - 1
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(x + 2)*(x + 3)*(x + 4) expands to x^3 + 9*x^2 + 26*x + 24" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x + 2) * (x + 3) * (x + 4)
+            expected = x ** 3 + 9 * x ** 2 + 26 * x + 24
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "a / ((x + 1)*(x + 2)) expands to a / ((x + 1)*(x + 2))" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = a / ((x + 1) * (x + 2))
+            expected = a / ((x + 1) * (x + 2))
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "sin(a*(b + c)) expands to sin(a*(b + c))" $ do
+        let a = mkSymbol "a" :: UnsimplifiedExpr
+            b = mkSymbol "b" :: UnsimplifiedExpr
+            c = mkSymbol "c" :: UnsimplifiedExpr
+            expr = mkFunction "sin" (a * (b + c) :| [])
+            expected = mkFunction "sin" (a * (b + c) :| []) 
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "((x + 2)^2)^2 expands to x^4 + 8*x^3 + 24*x^2 + 32*x + 16" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = ((x + 2) ** 2) ** 2
+            expected = x ** 4 + 8 * x ** 3 + 24 * x ** 2 + 32 * x + 16
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "(x + (1 + x)^2)^2 expands to x^2 + 2*x*(1 + x)^2 + (1 + x)^4" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (x + (1 + x) ** 2) ** 2
+            expected = x ** 2 + 2 * x * (1 + x) ** 2 + (1 + x) ** 4
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e,
+      testCase "2*x expands to 2*x" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = 2 * x
+            expected = 2 * x
+        case expandMainOp (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "expandMainOp failed: " ++ show e
     ]
