@@ -22,6 +22,8 @@ module SymHask.Symbolic.Basic
     symbols,
     treeSize,
     setFreeOf,
+    mapOperands,
+    isZero,
   )
 where
 
@@ -317,3 +319,34 @@ concurSubs equations (unsimplify -> expr) = do
         ]
   let result = Substitution.concurSubs structuralEquations expr
   simplify result
+
+-- | Apply an effectful function to every immediate operand of an expression.
+-- This keeps the traversal logic in one place for compound expressions.
+mapOperands :: (SimplifiedExpr -> EvalResult SimplifiedExpr) -> SimplifiedExpr -> EvalResult SimplifiedExpr
+mapOperands f = \case
+  Sum' terms -> do
+    terms' <- traverse f terms
+    simplify $ mkSum terms'
+  Product' factors -> do
+    factors' <- traverse f factors
+    simplify $ mkProduct factors'
+  Quotient' n d -> do
+    n' <- f n
+    d' <- f d
+    if d' == mkNumber 0
+      then throwError DivisionByZero
+      else simplify $ mkQuotient n' d'
+  Power' b e -> do
+    b' <- f b
+    e' <- f e
+    simplify $ mkPower b' e'
+  Function' fname args -> mkFunction fname <$> traverse f args
+  Factorial' x -> (f x >>= simplify . mkFactorial)
+  UnaryDiff' x -> (f x >>= simplify . mkUnaryDiff)
+  BinaryDiff' x y -> (mkBinaryDiff <$> f x <*> f y) >>= simplify
+  atom -> pure atom
+
+isZero :: Expr a -> Bool
+isZero (Number' n) = n == 0
+isZero (Fraction' n _) = n == 0
+isZero _ = False
