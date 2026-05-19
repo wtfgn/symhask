@@ -39,6 +39,7 @@ library
       SymHask.Symbolic.Simplification
       SymHask.Symbolic.Simplification.AutomaticSimplification
       SymHask.Symbolic.Simplification.RationalNumber
+      SymHask.Symbolic.Transcendental
   other-modules:
       Paths_symhask
   autogen-modules:
@@ -97,6 +98,7 @@ test-suite symhask-test
       SymHask.IntegrationSpec
       SymHask.PolynomialSpec
       SymHask.SimplificationSpec
+      SymHask.TranscendentalSpec
       TestUtils
       Paths_symhask
   autogen-modules:
