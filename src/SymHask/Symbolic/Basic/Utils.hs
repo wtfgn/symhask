@@ -5,6 +5,7 @@ module SymHask.Symbolic.Basic.Utils
   , eitherToMaybe
   , buildRestSum
   , buildRestProduct
+  , binomial
   ) where
 
 import Control.Monad (foldM)
@@ -64,3 +65,10 @@ buildRestProduct :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
 buildRestProduct [] = pure $ mkNumber 1
 buildRestProduct [x] = pure x
 buildRestProduct xs = simplify $ mkProduct (NE.fromList xs)
+
+-- integer binomial
+binomial :: Integer -> Integer -> Integer
+binomial n k
+  | k < 0 || k > n = 0
+  | otherwise = product [n - k + 1 .. n] `div` product [1 .. k]
+  
