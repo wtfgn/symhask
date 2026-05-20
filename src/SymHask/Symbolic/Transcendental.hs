@@ -1,10 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module SymHask.Symbolic.Transcendental
   ( expandExp,
     expandTrig,
     contractExp,
+    contractTrig,
+    separateSinCos,
     trigSubs,
   )
 where
@@ -14,8 +17,8 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import SymHask.Symbolic
 import SymHask.Symbolic.Basic (mapOperands, isZero)
 import SymHask.Symbolic.Basic.Polynomial (algebraicExpand, denom, expandMainOp)
-import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum)
-import SymHask.Symbolic.Simplification ( (.+.), (.-.), (.**.), (.*.))
+import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum, binomial)
+import SymHask.Symbolic.Simplification ( (.+.), (.-.), (.**.), (.*.), (./.))
 import Control.Monad (when, foldM)
 import qualified Data.List.NonEmpty as NE
 
@@ -181,6 +184,199 @@ contractExpRules u = do
     combineExpTerms acc term
       | isProduct term || isPower term = contractExpRules term >>= (acc .+.)
       | otherwise = acc .+. term
+
+-- | Separate an expression into a non-trig part and a sin/cos part.
+--
+-- Returns a pair (r, s) where:
+-- - s is the product of sin/cos operands and positive integer powers of sin/cos
+-- - r is the product of the remaining operands
+-- For non-product expressions:
+-- - if expression is sin/cos or a positive integer power of sin/cos, returns (1, expr)
+-- - otherwise returns (expr, 1)
+separateSinCos :: SimplifiedExpr -> EvalResult (SimplifiedExpr, SimplifiedExpr)
+separateSinCos expr = case expr of
+  Product' factors -> do
+    let (trigFactors, restFactors) = foldr splitFactor ([], []) (NE.toList factors)
+    r <- buildProductOrOne restFactors
+    s <- buildProductOrOne trigFactors
+    pure (r, s)
+  _
+    | isSinCosLike expr -> pure (mkNumber 1, expr)
+    | otherwise -> pure (expr, mkNumber 1)
+  where
+    splitFactor factor (trigs, rests)
+      | isSinCosLike factor = (factor : trigs, rests)
+      | otherwise = (trigs, factor : rests)
+
+    isSinCosLike = \case
+      Sin' _ -> True
+      Cos' _ -> True
+      Power' base (Number' n)
+        | n > 0 -> case base of
+            Sin' _ -> True
+            Cos' _ -> True
+            _ -> False
+      _ -> False
+
+    buildProductOrOne [] = pure $ mkNumber 1
+    buildProductOrOne [u] = pure u
+    buildProductOrOne us = simplify $ mkProduct (NE.fromList us)
+
+-- | Contract trigonometric expressions by combining products and powers of sin/cos.
+--
+-- The algorithm applies three product-to-sum identities:
+--   sin(θ)sin(φ) = cos(θ-φ)/2 - cos(θ+φ)/2    (7.30)
+--   cos(θ)cos(φ) = cos(θ+φ)/2 + cos(θ-φ)/2    (7.31)
+--   sin(θ)cos(φ) = sin(θ+φ)/2 + sin(θ-φ)/2    (7.32)
+--
+-- It also contracts powers of sin and cos using formulas (7.35) and (7.36).
+-- An expression is in trigonometric-contracted form when:
+--   1. Each product has at most one sin/cos operand
+--   2. No power has a sin/cos base with positive integer exponent
+--   3. Each complete sub-expression is algebraically expanded
+contractTrig :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractTrig u@(Number' _) = pure u
+contractTrig u@(Fraction' _ _) = pure u
+contractTrig u@(Symbol' _) = pure u
+contractTrig u = mapOperands contractTrig u >>= contractTrigRules
+
+contractTrigRules :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractTrigRules u = do
+  v <- expandMainOp u
+  case v of
+    Power' _ _ -> contractTrigPower v
+    Product' _ -> do
+      (c, d) <- separateSinCos v
+      if
+        | d == mkNumber 1 -> return v
+        | isSinCos d -> return v
+        | isPower d -> contractTrigPower d >>= (c .*.) >>= expandMainOp
+        | otherwise -> contractTrigProduct d >>= (c .*.) >>= expandMainOp
+    Sum' terms -> foldM contractSumTerm (mkNumber 0) (NE.toList terms)
+    _ -> pure v
+  where
+    contractSumTerm acc term = do
+      contracted <- if isProduct term || isPower term
+        then contractTrigRules term
+        else pure term
+      acc .+. contracted
+
+contractTrigProduct :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractTrigProduct u@(Product' (_ :| [])) = pure u
+contractTrigProduct (Product' (a :| [b])) = contractProductPair a b
+contractTrigProduct (Product' (a :| as)) = do
+  rest <- buildRestProduct as
+  b <- contractTrigProduct rest
+  a .*. b >>= contractExpRules
+contractTrigProduct expr = pure expr
+
+contractProductPair :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+contractProductPair a@(Power' _ _) b = do
+  a' <- contractTrigPower a
+  a' .*. b >>= contractTrigPower
+contractProductPair a b@(Power' _ _) = do
+  b' <- contractTrigPower b
+  a .*. b' >>= contractTrigPower
+contractProductPair a b = applyProductIdentity a b
+
+applyProductIdentity :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+applyProductIdentity (Sin' (unsimplify -> x)) (Sin' (unsimplify -> y)) =
+    -- sin(x)sin(y) = cos(x-y)/2 - cos(x+y)/2
+  simplify $ cos (x - y) / 2 - cos (x + y) / 2
+applyProductIdentity (Cos' (unsimplify -> x)) (Cos' (unsimplify -> y)) =
+  -- cos(x)cos(y) = cos(x+y)/2 + cos(x-y)/2
+  simplify $ cos (x + y) / 2 + cos (x - y) / 2
+applyProductIdentity (Cos' (unsimplify -> x)) (Sin' (unsimplify -> y)) =
+  -- cos(x)sin(y) = sin(x+y)/2 + sin(y-x)/2
+  simplify $ sin (x + y) / 2 + sin (y - x) / 2
+applyProductIdentity (Sin' (unsimplify -> x)) (Cos' (unsimplify -> y)) =
+  -- sin(x)cos(y) = sin(x+y)/2 + sin(x-y)/2
+  simplify $ sin (x + y) / 2 + sin (x - y) / 2
+applyProductIdentity _ _ = throwError $
+  UnsupportedOperation
+    "Only products of sin/cos can be contracted using product-to-sum identities."
+
+
+
+contractTrigPower :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractTrigPower (Power' (Sin' theta) (Number' n)) | n > 1 =
+  contractSinPower theta n
+contractTrigPower (Power' (Cos' theta) (Number' n)) | n > 1 =
+  contractCosPower theta n
+contractTrigPower expr = pure expr
+
+contractSinPower :: SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
+contractSinPower theta n
+  | even n = do
+      -- For even n: formula 7.36
+      let m = n `div` 2
+      let multiplier = (-1) ^ m
+      -- Constant term: C(n, n/2) / 2^n (no multiplier here)
+      temp <- mkNumber (binomial n m) ./. mkNumber (2 ^ n)
+      let term1' = temp
+      -- Rest sum with (-1)^(n/2) multiplier
+      let restTerms = [0 .. m - 1]
+      restSum <- foldM (\acc j -> do
+        let coeff = multiplier * (-1) ^ j * binomial n j
+        let arg = mkNumber (n - 2 * j) .*. theta
+        arg' <- arg
+        let cosArg = mkFunction "cos" (arg' :| [])
+        temp <- mkNumber coeff ./. mkNumber (2 ^ (n - 1))
+        term <- temp .*. cosArg
+        acc .+. term
+        ) (mkNumber 0) restTerms
+      term1' .+. restSum
+  | otherwise = do
+      -- For odd n: formula 7.36
+      let m = (n - 1) `div` 2
+      let sign = (-1) ^ ((n - 1) `div` 2)
+      let restTerms = [0 .. m]
+      foldM (\acc j -> do
+        let coeff = sign * (-1) ^ j * binomial n j
+        let arg = mkNumber (n - 2 * j) .*. theta
+        arg' <- arg
+        let sinArg = mkFunction "sin" (arg' :| [])
+        temp <- mkNumber coeff ./. mkNumber (2 ^ (n - 1))
+        term <- temp .*. sinArg
+        acc .+. term
+        ) (mkNumber 0) restTerms
+
+contractCosPower :: SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
+contractCosPower theta n
+  | even n = do
+      -- For even n: formula 7.35
+      let m = n `div` 2
+      let term1 = mkNumber (binomial n m) ./. mkNumber (2 ^ n)
+      term1' <- term1
+      let restTerms = [0 .. m - 1]
+      restSum <- foldM (\acc j -> do
+        let coeff = binomial n j
+        let arg = mkNumber (n - 2 * j) .*. theta
+        arg' <- arg
+        let cosArg = mkFunction "cos" (arg' :| [])
+        temp <- mkNumber coeff ./. mkNumber (2 ^ (n - 1))
+        term <- temp .*. cosArg
+        acc .+. term
+        ) (mkNumber 0) restTerms
+      term1' .+. restSum
+  | otherwise = do
+      -- For odd n: formula 7.35
+      let m = (n - 1) `div` 2
+      let restTerms = [0 .. m]
+      foldM (\acc j -> do
+        let coeff = binomial n j
+        let arg = mkNumber (n - 2 * j) .*. theta
+        arg' <- arg
+        let cosArg = mkFunction "cos" (arg' :| [])
+        temp <- mkNumber coeff ./. mkNumber (2 ^ (n - 1))
+        term <- temp .*. cosArg
+        acc .+. term
+        ) (mkNumber 0) restTerms
+
+isSinCos :: SimplifiedExpr -> Bool
+isSinCos (Sin' _) = True
+isSinCos (Cos' _) = True
+isSinCos _ = False
 
 -- | Substitute trigonometric functions tan/cot/sec/csc with sin/cos representations.
 --

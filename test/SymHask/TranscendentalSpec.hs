@@ -6,13 +6,20 @@ module SymHask.TranscendentalSpec
 where
 
 import SymHask.Symbolic
-import SymHask.Symbolic.Transcendental (contractExp, expandExp, expandTrig, trigSubs)
+import SymHask.Symbolic.Transcendental (contractExp, expandExp, expandTrig, separateSinCos, trigSubs, contractTrig)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 import TestUtils (simplifyOrFail)
 
 tests :: TestTree
-tests = testGroup "Transcendental" [expandExpTests, expandTrigTests, contractExpTests, expandTrigSubsTests]
+tests = testGroup "Transcendental"
+  [ expandExpTests
+  , expandTrigTests
+  , contractExpTests
+  , contractTrigTests
+  , separateSinCosTests
+  , expandTrigSubsTests
+  ]
 
 contractExpTests :: TestTree
 contractExpTests =
@@ -65,6 +72,150 @@ contractExpTests =
         case contractExp (simplifyOrFail expr) of
           Right out -> out @?= simplifyOrFail expected
           Left e -> fail $ "contractExp failed: " ++ show e
+    ]
+
+contractTrigTests :: TestTree
+contractTrigTests =
+  testGroup
+    "contractTrig"
+    [ testCase "sin(x)*sin(y) contracts to cos(x-y)/2 - cos(x+y)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = sin x * sin y
+            expected = cos (x - y) / 2 - cos (x + y) / 2
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "cos(x)*cos(y) contracts to cos(x+y)/2 + cos(x-y)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = cos x * cos y
+            expected = cos (x + y) / 2 + cos (x - y) / 2
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "sin(x)*cos(y) contracts to sin(x+y)/2 + sin(x-y)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = sin x * cos y
+            expected = sin (x + y) / 2 + sin (x - y) / 2
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "cos(x)*sin(y) contracts to sin(x+y)/2 + sin(y-x)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = cos x * sin y
+            expected = sin (x + y) / 2 + sin (y - x) / 2
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "a*sin(x)*sin(y) contracts with non-trig factor" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            a = mkSymbol "a" :: UnsimplifiedExpr
+            expr = a * sin x * sin y
+        case contractTrig (simplifyOrFail expr) of
+          Right _ -> return ()
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "sin(x) stays sin(x)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = sin x
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expr
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "3 stays 3" $ do
+        let expr = (3 :: UnsimplifiedExpr)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expr
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "cos(x)^4 contracts to (1/8)*cos(4*x) + (1/2)*cos(2*x) + 3/8" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = cos x ** 4
+            expected = (1 / 8) * cos (4 * x) + (1 / 2) * cos (2 * x) + (3 / 8)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "sin(x)^2 contracts to 1/2 - cos(2x)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = sin x ** 2
+            expected = (1 / 2) - (cos (2 * x) / 2)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "cos(x)^2 contracts to 1/2 + cos(2x)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = cos x ** 2
+            expected = (1 / 2) + (cos (2 * x) / 2)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "cos(2*x)^2 contracts to 1/2 + cos(4*x)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = cos (2 * x) ** 2
+            expected = (1 / 2) + (cos (4 * x) / 2)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "sin(x)^2 * cos(x)^2 contracts to (1/8)-(cos(4*x)/8)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = (sin x ** 2) * (cos x ** 2)
+            expected = (1 / 8) - (cos (4 * x) / 8)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e,
+      testCase "(sin(x) + cos(y)) * cos(y) contracts tp som(x + y)/2 + sin(x - y)/2 + 1/2 + cos(2*y)/2" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = (sin x + cos y) * cos y
+            expected = sin (x + y) / 2 + sin (x - y) / 2 + (1 / 2) + (cos (2 * y) / 2)
+        case contractTrig (simplifyOrFail expr) of
+          Right out -> out @?= simplifyOrFail expected
+          Left e -> fail $ "contractTrig failed: " ++ show e
+    ]
+
+separateSinCosTests :: TestTree
+separateSinCosTests =
+  testGroup
+    "separateSinCos"
+    [ testCase "separateSinCos(3*sin(x)*cos(y)) -> (3, sin(x)*cos(y))" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            expr = 3 * sin x * cos y
+            expected = (simplifyOrFail (3 :: UnsimplifiedExpr), simplifyOrFail (sin x * cos y))
+        case separateSinCos (simplifyOrFail expr) of
+          Right out -> out @?= expected
+          Left e -> fail $ "separateSinCos failed: " ++ show e,
+      testCase "separateSinCos(1 + sin(x)) -> (1 + sin(x), 1)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = 1 + sin x
+            expected = (simplifyOrFail expr, simplifyOrFail (1 :: UnsimplifiedExpr))
+        case separateSinCos (simplifyOrFail expr) of
+          Right out -> out @?= expected
+          Left e -> fail $ "separateSinCos failed: " ++ show e,
+      testCase "separateSinCos(sin(x)) -> (1, sin(x))" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = sin x
+            expected = (simplifyOrFail (1 :: UnsimplifiedExpr), simplifyOrFail expr)
+        case separateSinCos (simplifyOrFail expr) of
+          Right out -> out @?= expected
+          Left e -> fail $ "separateSinCos failed: " ++ show e,
+      testCase "separateSinCos(cos(x)^2) -> (1, cos(x)^2)" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            expr = cos x ** 2
+            expected = (simplifyOrFail (1 :: UnsimplifiedExpr), simplifyOrFail expr)
+        case separateSinCos (simplifyOrFail expr) of
+          Right out -> out @?= expected
+          Left e -> fail $ "separateSinCos failed: " ++ show e,
+      testCase "separateSinCos(x*sin(y)^2*cos(y)*z^3) -> (x*z^3, sin(y)^2*cos(y))" $ do
+        let x = mkSymbol "x" :: UnsimplifiedExpr
+            y = mkSymbol "y" :: UnsimplifiedExpr
+            z = mkSymbol "z" :: UnsimplifiedExpr
+            expr = x * (sin y ** 2) * cos y * (z ** 3)
+            expected = (simplifyOrFail (x * (z ** 3)), simplifyOrFail ((sin y ** 2) * cos y))
+        case separateSinCos (simplifyOrFail expr) of
+          Right out -> out @?= expected
+          Left e -> fail $ "separateSinCos failed: " ++ show e
     ]
 
 expandExpTests :: TestTree
