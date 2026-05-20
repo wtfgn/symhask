@@ -35,7 +35,7 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import SymHask.Symbolic
 import SymHask.Symbolic.Basic (freeOf, setFreeOf)
-import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum, eitherToMaybe)
+import SymHask.Symbolic.Basic.Utils (buildRestProduct, buildRestSum, eitherToMaybe, binomial)
 import SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (./.))
 
 -- | Check whether an expression is a monomial in a single variable.
@@ -573,12 +573,6 @@ expandRationalPower u num den = do
       if wholeExpanded == mkNumber 1
         then pure fractionalExpanded
         else expandProduct fractionalExpanded wholeExpanded
-
--- integer binomial
-binomial :: Integer -> Integer -> Integer
-binomial n k
-  | k < 0 || k > n = 0
-  | otherwise = product [n - k + 1 .. n] `div` product [1 .. k]
 
 -- Returns the numerator of an expression
 numer :: SimplifiedExpr -> EvalResult SimplifiedExpr
