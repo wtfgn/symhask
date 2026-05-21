@@ -172,13 +172,13 @@ functionRule (Acosh' v) x = do
 functionRule (Atanh' v) x = do
   dv <- diff v x
   pure $ 1 / (1 - v ** 2) * dv
-functionRule (ACoth' v) x = do
+functionRule (Acoth' v) x = do
   dv <- diff v x
   pure $ 1 / (1 - v ** 2) * dv
-functionRule (ASech' v) x = do
+functionRule (Asech' v) x = do
   dv <- diff v x
   pure $ -(1 / (v * sqrt (1 - v ** 2)) * dv)
-functionRule (ACsch' v) x = do
+functionRule (Acsch' v) x = do
   dv <- diff v x
   pure $ -(1 / (abs v * sqrt (1 + v ** 2)) * dv)
 
