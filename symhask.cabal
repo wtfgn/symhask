@@ -31,6 +31,7 @@ library
       SymHask
       SymHask.Printer
       SymHask.Printer.Haskell
+      SymHask.Printer.LaTeX
       SymHask.Symbolic
       SymHask.Symbolic.Basic
       SymHask.Symbolic.Basic.Polynomial
