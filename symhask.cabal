@@ -6,7 +6,9 @@ cabal-version: 2.2
 
 name:           symhask
 version:        0.1.0.0
+synopsis:       Library for symbolic mathematics
 description:    Please see the README on GitHub at <https://github.com/wtfgn/symhask#readme>
+category:       Computer Algebra System, Mathematics, Symbolic Computation
 homepage:       https://github.com/wtfgn/symhask#readme
 bug-reports:    https://github.com/wtfgn/symhask/issues
 author:         wtfgn
@@ -18,6 +20,7 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    LICENSE
 
 source-repository head
   type: git

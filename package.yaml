@@ -9,10 +9,11 @@ copyright:           "Copyright (c) 2025 wtfgn"
 extra-source-files:
 - README.md
 - CHANGELOG.md
+- LICENSE
 
 # Metadata used when publishing your package
-# synopsis:            Short description of your package
-# category:            Symbolic Computation
+synopsis:            Library for symbolic mathematics
+category:            Computer Algebra System, Mathematics, Symbolic Computation
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
