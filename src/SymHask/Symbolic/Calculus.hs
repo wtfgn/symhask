@@ -2,8 +2,8 @@
 
 module SymHask.Symbolic.Calculus
     ( diff
-    , multiDiff
     , mkDiffVar
+    , multiDiff
     ) where
 
 import           Control.Monad                             (foldM)

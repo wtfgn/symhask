@@ -1,8 +1,8 @@
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE InstanceSigs          #-}
-{-# OPTIONS_GHC -Wno-orphans #-} 
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs      #-}
+{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE ViewPatterns      #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module SymHask.Symbolic.Simplification
     ( (.**.)
@@ -12,14 +12,15 @@ module SymHask.Symbolic.Simplification
     , (./.)
     ) where
 
+import           Data.Coerce                                             (coerce)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification.AutomaticSimplification (automaticSimplify)
 import           SymHask.Symbolic.Simplification.RationalNumber          ()
-import          Data.Coerce                                          (coerce)
-
 
 -- ===========================================================================
+
 -- * Infix Operators with Simplification
+
 -- ===========================================================================
 infixl 6 .+., .-.
 infixl 7 .*., ./.
@@ -27,22 +28,23 @@ infixr 8 .**.
 
 -- These are just shorthands for constructing the corresponding UnsimplifiedExpr and then simplifying it.
 -- Not for building large expressions due to potential performance issues with repeated simplification.
-(.+.), (.-.), (.*.), (./.), (.**.):: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+(.+.), (.-.), (.*.), (./.), (.**.) :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
 (.+.) (unsimplify -> x) (unsimplify -> y) = simplify (x + y)
 (.-.) (unsimplify -> x) (unsimplify -> y) = simplify (x - y)
 (.*.) (unsimplify -> x) (unsimplify -> y) = simplify (x * y)
 (./.) (unsimplify -> n) (unsimplify -> d) = simplify (n / d)
 (.**.) (unsimplify -> b) (unsimplify -> e) = simplify (b ** e)
 
-
 -- ===========================================================================
+
 -- * Simplifiable Instances
+
 -- ===========================================================================
 
 instance Simplify UnsimplifiedExpr where
   type Simplification UnsimplifiedExpr = SimplifiedExpr
   simplify :: UnsimplifiedExpr -> EvalResult SimplifiedExpr
-  simplify =  coerce automaticSimplify
+  simplify = coerce automaticSimplify
 
 instance Simplify SimplifiedExpr where
   type Simplification SimplifiedExpr = SimplifiedExpr

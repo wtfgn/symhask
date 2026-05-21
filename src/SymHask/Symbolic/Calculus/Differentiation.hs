@@ -16,7 +16,9 @@ import           SymHask.Symbolic.Basic          (freeOf)
 import           SymHask.Symbolic.Simplification ()
 
 -- ============================================================================
+
 -- * Data Types
+
 -- ============================================================================
 
 data DiffVar
@@ -28,14 +30,16 @@ data DiffVar
 -- pattern Diff' expr x <- Function' "diff" (expr :| [x])
 
 -- ============================================================================
+
 -- * Helpers
+
 -- ============================================================================
 
 diffVarToExpr :: DiffVar -> Expr a
 diffVarToExpr (DiffSymbol s) = mkSymbol s
 diffVarToExpr (DiffFunction fname args) =
   let args' = NE.fromList $ map mkSymbol (NE.toList args)
-  in mkFunction fname args'
+   in mkFunction fname args'
 
 mkDiffExpr :: Expr a -> DiffVar -> Expr a
 mkDiffExpr expr (diffVarToExpr -> var) = mkFunction "diff" (expr :| [var])
@@ -43,13 +47,16 @@ mkDiffExpr expr (diffVarToExpr -> var) = mkFunction "diff" (expr :| [var])
 mkDiffVar :: Expr s -> EvalResult DiffVar
 mkDiffVar (Symbol' s) = pure $ DiffSymbol s
 mkDiffVar (Function' fname args) =
-  let argNames = [ s | Symbol' s <- NE.toList args ]
-  in pure $ DiffFunction fname (NE.fromList argNames)
-mkDiffVar _ = throwError $
-  UnsupportedOperation "Cannot create DiffVar from this expression type"
+  let argNames = [s | Symbol' s <- NE.toList args]
+   in pure $ DiffFunction fname (NE.fromList argNames)
+mkDiffVar _ =
+  throwError $
+    UnsupportedOperation "Cannot create DiffVar from this expression type"
 
 -- ============================================================================
+
 -- * Implementation
+
 -- ============================================================================
 
 diff :: UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExpr
@@ -80,142 +87,116 @@ sumRule terms dVar = do
 productRule :: NE.NonEmpty UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExpr
 productRule factors dVar = do
   let factorList = NE.toList factors
-  terms <- traverse (productTerm factorList dVar) [0..length factorList - 1]
+  terms <- traverse (productTerm factorList dVar) [0 .. length factorList - 1]
   pure $ sum $ filter (/= 0) terms
-  where
-    productTerm fs var i = do
-      deriv <- diff (fs !! i) var
-      let others = take i fs <> drop (i + 1) fs
-      pure $ deriv * product others
+ where
+  productTerm fs var i = do
+    deriv <- diff (fs !! i) var
+    let others = take i fs <> drop (i + 1) fs
+    pure $ deriv * product others
 
 functionRule :: UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExpr
 functionRule (Sqrt' v) x = do
   dv <- diff v x
   pure $ (1 / (2 * sqrt v)) * dv
-
 functionRule (Exp' v) x = do
   dv <- diff v x
   pure $ exp v * dv
-
 functionRule (LogBase' b v) x = do
   dv <- diff v x
   db <- diff b x
   pure $ dv / (v * log b) - db * log v / (b * log b ** 2)
-
 functionRule (Log' v) x = do
   dv <- diff v x
   pure $ dv / v
-
 functionRule (Sin' v) x = do
   dv <- diff v x
   pure $ cos v * dv
-
 functionRule (Cos' v) x = do
   dv <- diff v x
-  pure $ - (sin v * dv)
-
+  pure $ -(sin v * dv)
 functionRule (Tan' v) x = do
   dv <- diff v x
   pure $ (1 / cos v) ** 2 * dv
-
-functionRule (Cot' v) x =do
+functionRule (Cot' v) x = do
   dv <- diff v x
-  pure $ - ((1 / sin v) ** 2 * dv)
-
+  pure $ -((1 / sin v) ** 2 * dv)
 functionRule (Sec' v) x = do
   dv <- diff v x
   pure (sin v / cos v ** 2 * dv)
-
 functionRule (Csc' v) x = do
   dv <- diff v x
-  pure $ - (cos v / sin v ** 2 * dv)
-
+  pure $ -(cos v / sin v ** 2 * dv)
 functionRule (Asin' v) x = do
   dv <- diff v x
   pure $ 1 / sqrt (1 - v ** 2) * dv
-
 functionRule (Acos' v) x = do
   dv <- diff v x
-  pure $ - (1 / sqrt (1 - v ** 2) * dv)
-
+  pure $ -(1 / sqrt (1 - v ** 2) * dv)
 functionRule (Atan' v) x = do
   dv <- diff v x
   pure $ 1 / (1 + v ** 2) * dv
-
 functionRule (Acot' v) x = do
   dv <- diff v x
-  pure $ - (1 / (1 + v ** 2) * dv)
-
+  pure $ -(1 / (1 + v ** 2) * dv)
 functionRule (Asec' v) x = do
   dv <- diff v x
   pure $ 1 / (abs v * sqrt (v ** 2 - 1)) * dv
-
 functionRule (Acsc' v) x = do
   dv <- diff v x
-  pure $ - (1 / (abs v * sqrt (v ** 2 - 1)) * dv)
-
+  pure $ -(1 / (abs v * sqrt (v ** 2 - 1)) * dv)
 functionRule (Sinh' v) x = do
   dv <- diff v x
   pure $ cosh v * dv
-
 functionRule (Cosh' v) x = do
   dv <- diff v x
   pure $ sinh v * dv
-
 functionRule (Tanh' v) x = do
   dv <- diff v x
   pure $ 1 / cosh v ** 2 * dv
-
 functionRule (Coth' v) x = do
   dv <- diff v x
-  pure $ - (1 / sinh v ** 2 * dv)
-
+  pure $ -(1 / sinh v ** 2 * dv)
 functionRule (Sech' v) x = do
   dv <- diff v x
-  pure $ - (sinh v / cosh v ** 2 * dv)
-
+  pure $ -(sinh v / cosh v ** 2 * dv)
 functionRule (Csch' v) x = do
   dv <- diff v x
-  pure $ - (cosh v / sinh v ** 2 * dv)
-
+  pure $ -(cosh v / sinh v ** 2 * dv)
 functionRule (Asinh' v) x = do
   dv <- diff v x
   pure $ 1 / sqrt (v ** 2 + 1) * dv
-
 functionRule (Acosh' v) x = do
   dv <- diff v x
   pure $ 1 / sqrt (v ** 2 - 1) * dv
-
 functionRule (Atanh' v) x = do
   dv <- diff v x
   pure $ 1 / (1 - v ** 2) * dv
-
 functionRule (ACoth' v) x = do
   dv <- diff v x
   pure $ 1 / (1 - v ** 2) * dv
-
 functionRule (ASech' v) x = do
   dv <- diff v x
-  pure $ - (1 / (v * sqrt (1 - v ** 2)) * dv)
-
+  pure $ -(1 / (v * sqrt (1 - v ** 2)) * dv)
 functionRule (ACsch' v) x = do
   dv <- diff v x
-  pure $ - (1 / (abs v * sqrt (1 + v ** 2)) * dv)
+  pure $ -(1 / (abs v * sqrt (1 + v ** 2)) * dv)
 
 -- Unknown functions - apply generalized chain rule
 -- d/dx f(u₁, u₂, ..., uₙ) = Σᵢ (∂f/∂uᵢ) * (duᵢ/dx)
 functionRule (Function' fname args) dVar = do
   chainTerms <- traverse (argTerm fname args dVar) args
   return $ sum $ NE.filter (/= 0) chainTerms
-  where
-    argTerm funcName allArgs var arg = do
-      argDiff <- diff arg var
-      if argDiff == 0
-        then return 0
-        else do
-          argVar <- mkDiffVar arg
-          let partial = mkDiffExpr (mkFunction funcName allArgs) argVar
-          return $ partial * argDiff
-
-functionRule _ _ = throwError $ UnsupportedOperation
-  "Unsupported function type for differentiation."
+ where
+  argTerm funcName allArgs var arg = do
+    argDiff <- diff arg var
+    if argDiff == 0
+      then return 0
+      else do
+        argVar <- mkDiffVar arg
+        let partial = mkDiffExpr (mkFunction funcName allArgs) argVar
+        return $ partial * argDiff
+functionRule _ _ =
+  throwError $
+    UnsupportedOperation
+      "Unsupported function type for differentiation."

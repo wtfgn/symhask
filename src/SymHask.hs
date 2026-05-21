@@ -4,5 +4,3 @@ module SymHask
 
 testF :: IO ()
 testF = print "Hello, SymHask!"
-
-

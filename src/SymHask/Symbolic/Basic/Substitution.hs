@@ -14,7 +14,9 @@ import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification ()
 
 -- ============================================================================
+
 -- * Type-Safe Wrappers
+
 -- ============================================================================
 
 -- | What to search for in the expression
@@ -28,7 +30,9 @@ newtype Replacement a
   deriving (Eq, Show)
 
 -- ============================================================================
+
 -- * Semantic Substitution (Simplified Only)
+
 -- ============================================================================
 
 -- -- | Substitution with simplification
@@ -40,7 +44,6 @@ newtype Replacement a
 --   (unsimplify . unPattern -> pat, unsimplify . unReplacement -> repl)
 --   (unsimplify -> expr) =
 --     simplify $ subsImpl (Pattern pat, Replacement repl) expr
-
 
 -- seqSubs
 --   :: [(Pattern SimplifiedExpr, Replacement SimplifiedExpr)]
@@ -64,7 +67,9 @@ newtype Replacement a
 --   simplify result
 
 -- ============================================================================
+
 -- * Structural Substitution (Unrestricted)
+
 -- ============================================================================
 
 -- -- | Structural substitution - exact pattern matching
@@ -91,33 +96,34 @@ newtype Replacement a
 -- concurSubsStruct = concurSubsImpl
 
 -- ============================================================================
+
 -- * Implementation (Internal)
+
 -- ============================================================================
 
 subs :: (Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr) -> UnsimplifiedExpr -> UnsimplifiedExpr
 subs equation@(Pattern pat, Replacement repl) expr
   | expr == pat = repl
   | otherwise = case expr of
-    Number' n            -> mkNumber n
-    Fraction' n d        -> mkFraction n d
-    Symbol' s            -> mkSymbol s
-    Product' xs          -> mkProduct $ NE.map recurse xs
-    Sum' xs              -> mkSum $ NE.map recurse xs
-    Quotient' n d        -> mkQuotient (recurse n) (recurse d)
-    UnaryDiff' x         -> mkUnaryDiff (recurse x)
-    BinaryDiff' x y      -> mkBinaryDiff (recurse x) (recurse y)
-    Power' x y           -> mkPower (recurse x) (recurse y)
-    Factorial' x         -> mkFactorial (recurse x)
-    Function' fname args -> mkFunction fname (NE.map recurse args)
-  where
-    recurse = subs equation
-
+      Number' n            -> mkNumber n
+      Fraction' n d        -> mkFraction n d
+      Symbol' s            -> mkSymbol s
+      Product' xs          -> mkProduct $ NE.map recurse xs
+      Sum' xs              -> mkSum $ NE.map recurse xs
+      Quotient' n d        -> mkQuotient (recurse n) (recurse d)
+      UnaryDiff' x         -> mkUnaryDiff (recurse x)
+      BinaryDiff' x y      -> mkBinaryDiff (recurse x) (recurse y)
+      Power' x y           -> mkPower (recurse x) (recurse y)
+      Factorial' x         -> mkFactorial (recurse x)
+      Function' fname args -> mkFunction fname (NE.map recurse args)
+ where
+  recurse = subs equation
 
 -- | Internal implementation of concurrent substitution
-concurSubs
-  :: [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)]
-  -> UnsimplifiedExpr
-  -> UnsimplifiedExpr
+concurSubs ::
+  [(Pattern UnsimplifiedExpr, Replacement UnsimplifiedExpr)] ->
+  UnsimplifiedExpr ->
+  UnsimplifiedExpr
 concurSubs equations expr =
   -- First, check if the entire expression matches any pattern
   case findMatchingReplacement expr equations of
@@ -125,26 +131,26 @@ concurSubs equations expr =
     Nothing ->
       -- No direct match, recursively apply to sub-expressions
       case expr of
-        Number' n            -> mkNumber n
-        Fraction' n d        -> mkFraction n d
-        Symbol' s            -> mkSymbol s
-        Product' xs          -> mkProduct $ NE.map (concurSubs equations) xs
-        Sum' xs              -> mkSum $ NE.map (concurSubs equations) xs
-        Quotient' n d        -> mkQuotient (recurse n) (recurse d)
-        UnaryDiff' x         -> mkUnaryDiff (recurse x)
-        BinaryDiff' x y      -> mkBinaryDiff (recurse x) (recurse y)
-        Power' x y           -> mkPower (recurse x) (recurse y)
-        Factorial' x         -> mkFactorial (recurse x)
+        Number' n -> mkNumber n
+        Fraction' n d -> mkFraction n d
+        Symbol' s -> mkSymbol s
+        Product' xs -> mkProduct $ NE.map (concurSubs equations) xs
+        Sum' xs -> mkSum $ NE.map (concurSubs equations) xs
+        Quotient' n d -> mkQuotient (recurse n) (recurse d)
+        UnaryDiff' x -> mkUnaryDiff (recurse x)
+        BinaryDiff' x y -> mkBinaryDiff (recurse x) (recurse y)
+        Power' x y -> mkPower (recurse x) (recurse y)
+        Factorial' x -> mkFactorial (recurse x)
         Function' fname args -> mkFunction fname (NE.map (concurSubs equations) args)
-  where
-    recurse = concurSubs equations
+ where
+  recurse = concurSubs equations
 
 -- | Find the first matching replacement for an expression
-findMatchingReplacement
-  :: Expr a
-  -> [(Pattern (Expr a), Replacement (Expr a))]
-  -> Maybe (Expr a)
+findMatchingReplacement ::
+  Expr a ->
+  [(Pattern (Expr a), Replacement (Expr a))] ->
+  Maybe (Expr a)
 findMatchingReplacement _ [] = Nothing
-findMatchingReplacement expr ((Pattern pat, Replacement repl):rest)
+findMatchingReplacement expr ((Pattern pat, Replacement repl) : rest)
   | expr == pat = Just repl
   | otherwise = findMatchingReplacement expr rest

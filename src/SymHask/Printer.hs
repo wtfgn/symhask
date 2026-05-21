@@ -5,4 +5,4 @@ module SymHask.Printer
     ( toHaskell
     ) where
 
-import          SymHask.Printer.Haskell (toHaskell)
+import           SymHask.Printer.Haskell (toHaskell)

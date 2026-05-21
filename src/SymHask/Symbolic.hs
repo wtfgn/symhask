@@ -13,7 +13,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 
-
 module SymHask.Symbolic
     ( -- Error types and result monad
       EvalResult
@@ -123,9 +122,10 @@ import           GHC.Generics       (Generic)
 import           TextShow           (TextShow)
 import           TextShow.Generic   (FromGeneric (FromGeneric))
 
-
 -- ============================================================================
+
 -- * Error Types
+
 -- ============================================================================
 
 data ExprError
@@ -138,7 +138,9 @@ data ExprError
 type EvalResult a = Either ExprError a
 
 -- ============================================================================
+
 -- * Complete GADT for All Expression Types
+
 -- ============================================================================
 
 type UnsimplifiedExpr = Expr 'Unsimplified
@@ -163,8 +165,11 @@ data Expr (a :: SimplificationState)
   deriving (Eq, Generic, Hashable, NFData, Read, Show)
   deriving (TextShow)
     via FromGeneric (Expr a)
+
 -- ============================================================================
+
 -- * Type Class Instances
+
 -- ============================================================================
 instance IsString (Expr a) where
   fromString :: String -> Expr a
@@ -243,7 +248,9 @@ instance Floating UnsimplifiedExpr where
   atanh = Function "atanh" . NE.singleton
 
 -- ============================================================================
+
 -- * Pattern Synonyms
+
 -- ============================================================================
 pattern Pi', E', I' :: Expr a
 pattern Pi' = Symbol "pi"
@@ -264,12 +271,37 @@ pattern LogBase' :: () => Expr a -> Expr a -> Expr a
 pattern LogBase' x y = Function "logBase" (x :| [y])
 
 pattern
-  Negate', Abs', Signum', Exp', Log', Sqrt',
-  Sin', Cos', Tan', Cot', Sec', Csc',
-  Asin', Acos', Atan', Acot', Asec', Acsc',
-  Sinh', Cosh', Tanh', Coth', Sech', Csch',
-  Asinh', Acosh', Atanh', ACoth', ASech', ACsch'
-  :: () => Expr a -> Expr a
+  Negate'
+  , Abs'
+  , Signum'
+  , Exp'
+  , Log'
+  , Sqrt'
+  , Sin'
+  , Cos'
+  , Tan'
+  , Cot'
+  , Sec'
+  , Csc'
+  , Asin'
+  , Acos'
+  , Atan'
+  , Acot'
+  , Asec'
+  , Acsc'
+  , Sinh'
+  , Cosh'
+  , Tanh'
+  , Coth'
+  , Sech'
+  , Csch'
+  , Asinh'
+  , Acosh'
+  , Atanh'
+  , ACoth'
+  , ASech'
+  , ACsch' ::
+    () => Expr a -> Expr a
 pattern Negate' x = Function "negate" (x :| [])
 pattern Abs' x = Function "abs" (x :| [])
 pattern Signum' x = Function "signum" (x :| [])
@@ -329,13 +361,23 @@ pattern Max' :: HS.HashSet SimplifiedExpr -> SimplifiedExpr
 pattern Max' exprSet <- Function' "max" (NE.toList -> (HS.fromList -> exprSet))
 
 {-# COMPLETE
-  Number', Fraction', Symbol',
-  Product', Sum', Quotient', Power',
-  Function', Factorial',
-  UnaryDiff', BinaryDiff'
+  Number'
+  , Fraction'
+  , Symbol'
+  , Product'
+  , Sum'
+  , Quotient'
+  , Power'
+  , Function'
+  , Factorial'
+  , UnaryDiff'
+  , BinaryDiff'
   #-}
+
 -- ============================================================================
+
 -- * Smart Constructors
+
 -- ============================================================================
 
 mkNumber :: Integer -> Expr a
@@ -373,13 +415,15 @@ mkUnaryDiff :: Expr a -> UnsimplifiedExpr
 mkUnaryDiff = coerce UnaryDiff
 
 mkBinaryDiff :: Expr a -> Expr a' -> UnsimplifiedExpr
-mkBinaryDiff =  coerce BinaryDiff
+mkBinaryDiff = coerce BinaryDiff
 
 mkMax :: HS.HashSet SimplifiedExpr -> SimplifiedExpr
 mkMax exprSet = mkFunction "max" (NE.fromList (HS.toList exprSet))
 
 -- ============================================================================
+
 -- * Helper Functions
+
 -- ============================================================================
 
 -- | Check if expression is a constant (number or fraction)
@@ -441,22 +485,24 @@ isBinaryDiff _                = False
 
 isNumerical :: SimplifiedExpr -> Bool
 isNumerical = \case
-  Number' _     -> True
+  Number' _ -> True
   Fraction' _ _ -> True
-  Pi'         -> True
-  E'         -> True
-  Symbol' _     -> False
-  Quotient' n d  -> isNumerical n && isNumerical d
-  UnaryDiff' x   -> isNumerical x
+  Pi' -> True
+  E' -> True
+  Symbol' _ -> False
+  Quotient' n d -> isNumerical n && isNumerical d
+  UnaryDiff' x -> isNumerical x
   BinaryDiff' x y -> isNumerical x && isNumerical y
-  Product' factors    -> all isNumerical factors
-  Sum' terms        -> all isNumerical terms
+  Product' factors -> all isNumerical factors
+  Sum' terms -> all isNumerical terms
   Power' b e -> isNumerical b && isNumerical e
-  Factorial' expr  -> isNumerical expr
+  Factorial' expr -> isNumerical expr
   Function' _ args -> all isNumerical args
 
 -- ============================================================================
+
 -- * Simplification Framework
+
 -- ============================================================================
 
 data SimplificationState

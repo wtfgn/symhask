@@ -2,48 +2,43 @@ module SymHask.Printer.Haskell
     ( toHaskell
     ) where
 
-import           Data.List             (intersperse)
-import qualified Data.List.NonEmpty    as NE
-import           Data.Text             (Text)
+import           Data.List          (intersperse)
+import qualified Data.List.NonEmpty as NE
+import           Data.Text          (Text)
 import           SymHask.Symbolic
-import           TextShow              (showt)
+import           TextShow           (showt)
 
 -- | Convert an expression to a Haskell expression
 toHaskell :: Expr a -> Text
 toHaskell = \case
   Number' n -> showt n
   Symbol' s -> s
-
   x :-: y@(_ :+: _) -> asAddArg x <> " - " <> asArg y
   x :-: y@(_ :-: _) -> asAddArg x <> " - " <> asArg y
   UnaryDiff' x -> "-" <> asAddArg x
   BinaryDiff' x y -> asAddArg x <> " - " <> asAddArg y
-
   Fraction' n d ->
     let nStr = asArg (mkNumber n)
         dStr = asArg (mkNumber d)
-    in nStr <> " / " <> dStr
-
+     in nStr <> " / " <> dStr
   Quotient' n d -> asArg n <> " / " <> asArg d
   Power' x y -> asArg x <> " ^ " <> asArg y
   Factorial' x -> asArg x <> "!"
-
   Product' xs ->
     let factors = NE.toList xs
         factorStrs = map asMultiplyArg factors
-    in  mconcat $ intersperse " * " factorStrs
-
+     in mconcat $ intersperse " * " factorStrs
   Sum' xs ->
     let terms = NE.toList xs
         termStrs = map asAddArg terms
-    in  mconcat $ intersperse " + " termStrs
-
+     in mconcat $ intersperse " + " termStrs
   Function' fname args ->
     let argStrs = map asArg $ NE.toList args
-    in fname <> " " <> mconcat (intersperse " " argStrs)
+     in fname <> " " <> mconcat (intersperse " " argStrs)
 
--- | Show numbers and symbols as is, while surrounding everything
--- else in parentheses.
+{- | Show numbers and symbols as is, while surrounding everything
+else in parentheses.
+-}
 asArg :: Expr a -> Text
 asArg x@(Number' n)
   | n >= 0 = toHaskell x
