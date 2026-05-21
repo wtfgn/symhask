@@ -85,15 +85,15 @@ module SymHask.Symbolic
     , pattern (:+:)
     , pattern (:-:)
     , pattern (:/:)
-    , pattern ACoth'
-    , pattern ACsch'
-    , pattern ASech'
     , pattern Abs'
     , pattern Acos'
     , pattern Acosh'
     , pattern Acot'
+    , pattern Acoth'
     , pattern Acsc'
+    , pattern Acsch'
     , pattern Asec'
+    , pattern Asech'
     , pattern Asin'
     , pattern Asinh'
     , pattern Atan'
@@ -310,7 +310,7 @@ pattern
   Sin', Cos', Tan', Cot', Sec', Csc',
   Asin', Acos', Atan', Acot', Asec', Acsc',
   Sinh', Cosh', Tanh', Coth', Sech', Csch',
-  Asinh', Acosh', Atanh', ACoth', ASech', ACsch'
+  Asinh', Acosh', Atanh', Acoth', Asech', Acsch'
   :: () => Expr a -> Expr a
 pattern Negate' x = Function "negate" (x :| []) -- | `negate`
 pattern Abs' x = Function "abs" (x :| []) -- | `abs`
@@ -339,9 +339,9 @@ pattern Csch' x = Function "csch" (x :| []) -- | `csch`
 pattern Asinh' x = Function "asinh" (x :| []) -- | `asinh`
 pattern Acosh' x = Function "acosh" (x :| []) -- | `acosh`
 pattern Atanh' x = Function "atanh" (x :| []) -- | `atanh`
-pattern ACoth' x = Function "acoth" (x :| []) -- | `acoth`
-pattern ASech' x = Function "asech" (x :| []) -- | `asech`
-pattern ACsch' x = Function "acsch" (x :| []) -- | `acsch`
+pattern Acoth' x = Function "acoth" (x :| []) -- | `acoth`
+pattern Asech' x = Function "asech" (x :| []) -- | `asech`
+pattern Acsch' x = Function "acsch" (x :| []) -- | `acsch`
 
 -- | Only the pattern are exported, but not the underlying constructor
 pattern Number' :: Integer -> Expr a
