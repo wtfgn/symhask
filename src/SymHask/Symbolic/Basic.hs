@@ -1,6 +1,11 @@
 {-# LANGUAGE MultiWayIf   #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- | Basic symbolic utilities and helpers.
+--
+-- Provides functions for expression analysis (symbol extraction,
+-- trial substitutions, factor separation), small numeric helpers, and
+-- utilities used by the simplifiers.
 module SymHask.Symbolic.Basic
     ( FunctionParity (..)
     , LinearForm (..)
@@ -41,6 +46,9 @@ data FunctionParity
   | OddFunc
   | NeitherFunc
   deriving (Eq, Show)
+
+-- | Classification of a function as even, odd, or neither with
+-- respect to a variable.
 
 -- | A linear form represented as a*x + b
 data LinearForm
