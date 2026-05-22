@@ -2,10 +2,21 @@
 {-# LANGUAGE MultiWayIf   #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- |
+-- Module: SymHask.Symbolic.Transcendental
+-- Description: Operations on transcendental functions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- Support for operations on transcendental functions,
+-- including expansion and contraction of exponential and trigonometric expressions.
 module SymHask.Symbolic.Transcendental
-    ( contractExp
-    , contractTrig
+    ( -- * Exponential
+      contractExp
     , expandExp
+      -- * Trigonometric
+    , contractTrig
     , expandTrig
     , separateSinCos
     , trigSubs
@@ -16,6 +27,7 @@ import           Control.Monad.Error.Class         (throwError)
 import           Data.List.NonEmpty                (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                as NE
 import           Math.Combinatorics.Exact.Binomial (choose)
+import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic            (buildRestProduct,
                                                     buildRestSum, isZero,
@@ -24,18 +36,81 @@ import           SymHask.Symbolic.Polynomial       (algebraicExpand, denom,
                                                     expandMainOp)
 import           SymHask.Symbolic.Simplification   ((.**.), (.*.), (.+.), (.-.),
                                                     (./.))
+-- | Contract exponential expressions by combining products of exponentials and
+-- rewriting powers of exponentials into a single exponential.
+--
+-- Exponential contraction applies the following rules:
+-- \[
+--   exp(u) exp(v) = exp(u + v)
+--   exp(u)^w = exp(w u)
+-- \]
+--
+-- An expression is in exponential-contracted form when:
+--
+-- 1. No product has more than one `exp` operand
+--
+-- 2. No power has an `exp` base
+--
+-- 3. Each complete sub-expression is algebraically expanded
+--
+-- >>> let expr = exp "x" * (exp "x" + exp "y") :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= contractExp
+-- Right "exp (2 * x) + exp (x + y)"
+contractExp :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractExp u@(Number' _)     = pure u
+contractExp u@(Fraction' _ _) = pure u
+contractExp u@(Symbol' _)     = pure u
+contractExp u                 = mapOperands contractExp u >>= contractExpRules
 
+contractExpRules :: SimplifiedExpr -> EvalResult SimplifiedExpr
+contractExpRules u = do
+  v <- expandMainOp u
+  case v of
+    Power' (Exp' x) s -> do
+      p <- x .*. s
+      contracted <- if needsFurtherContraction p then contractExpRules p else return p
+      pure $ Exp' contracted
+    Product' factors -> do
+      (p, s) <- foldM combineExpFactors (mkNumber 1, mkNumber 0) factors
+      if isZero s then return v else Exp' s .*. p
+    Sum' terms -> foldM combineExpTerms (mkNumber 0) terms
+    _ -> pure v
+  where
+    needsFurtherContraction expr = isProduct expr || isPower expr
+
+    combineExpFactors (p, s) factor = case factor of
+      Exp' n -> do
+        s' <- s .+. n
+        return (p, s')
+      _ -> do
+        p' <- p .*. factor
+        return (p', s)
+
+    combineExpTerms acc term
+      | isProduct term || isPower term = contractExpRules term >>= (acc .+.)
+      | otherwise = acc .+. term
 
 -- | Expand expressions in the exponential sense.
 --
 -- The algorithm recursively expands subexpressions, then applies the
--- exponential rules to any exp(...) node:
---   exp(u + v) = exp(u) * exp(v)
---   exp(w * u) = exp(u) ^ w  when w is an integer
+-- exponential rules to any \(exp(\dots)\) node:
+--
+-- \[
+--   exp(u + v) = exp(u) exp(v)
+--   exp(w  u) = exp(u) ^ w
+-- \]
+--
+-- where \(w\) is an integer and \(u, v\) are arbitrary expressions.
 --
 -- Before the exp rules are applied, the argument is algebraically expanded.
--- This lets expressions such as exp((x+y)(x-y)) reduce to exp(x^2) / exp(y^2).
--- If a denominator simplifies to 0 during the process, DivisionByZero is raised.
+-- If a denominator simplifies to \(0\) during the process, `DivisionByZero` is raised.
+-- >>> let expr = exp $ ("x" + "y")*("x" - "y") :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= expandExp
+-- Right "exp (x ^ 2) * (exp (y ^ 2)) ^ (-1)"
+--
+-- >>> let expr = 1 / (exp (2*"x") - (exp "x")**2) :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= expandExp
+-- Left DivisionByZero
 expandExp :: SimplifiedExpr -> Either ExprError SimplifiedExpr
 expandExp expr = do
   d <- denom expr >>= expandExpCore
@@ -71,170 +146,33 @@ data TrigKind
   = TrigSin
   | TrigCos
 
--- | Expand trigonometric functions sin/cos according to angle addition and multiple angle identities.
--- For non-sin/cos trig functions, use 'trigSubs' first to rewrite them in terms of sin/cos.
-expandTrig :: SimplifiedExpr -> EvalResult SimplifiedExpr
-expandTrig expr = do
-  d <- denom expr >>= expandTrigCore
-  when (isZero d) $ throwError DivisionByZero
-  expandTrigCore expr >>= algebraicExpand
-
-expandTrigCore :: SimplifiedExpr -> EvalResult SimplifiedExpr
-expandTrigCore u@(Number' _)     = pure u
-expandTrigCore u@(Fraction' _ _) = pure u
-expandTrigCore u@(Symbol' _)     = pure u
-expandTrigCore (Sin' x)          = expandTrigCore x >>= expandTrigRules TrigSin
-expandTrigCore (Cos' x)          = expandTrigCore x >>= expandTrigRules TrigCos
-expandTrigCore u                 = mapOperands expandTrigCore u
-
-expandTrigRules :: TrigKind -> SimplifiedExpr -> EvalResult SimplifiedExpr
-expandTrigRules kind arg = do
-  arg' <- algebraicExpand arg
-  case arg' of
-    Sum' (f :| rest) -> do
-      r <- buildRestSum rest
-      expandTrigSum kind f r
-    Product' (Number' n :| rest) -> do
-      theta <- buildRestProduct rest
-      expandTrigMultiple kind n theta
-    _ -> pure $ mkTrig kind arg
-
-expandTrigSum :: TrigKind -> SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
-expandTrigSum TrigSin u v = do
-  su <- expandTrigRules TrigSin u
-  cu <- expandTrigRules TrigCos u
-  sv <- expandTrigRules TrigSin v
-  cv <- expandTrigRules TrigCos v
-  left <- su .*. cv
-  right <- cu .*. sv
-  left .+. right
-expandTrigSum TrigCos u v = do
-  cu <- expandTrigRules TrigCos u
-  cv <- expandTrigRules TrigCos v
-  su <- expandTrigRules TrigSin u
-  sv <- expandTrigRules TrigSin v
-  left <- cu .*. cv
-  right <- su .*. sv
-  left .-. right
-
-expandTrigMultiple :: TrigKind -> Integer -> SimplifiedExpr -> EvalResult SimplifiedExpr
-expandTrigMultiple kind n theta
-  | n == 0 = pure $ case kind of
-      TrigSin -> mkNumber 0
-      TrigCos -> mkNumber 1
-  | n < 0 = do
-      expanded <- expandTrigMultiple kind (-n) theta
-      case kind of
-        TrigSin -> simplify $ mkUnaryDiff expanded
-        TrigCos -> pure expanded
-  | n == 1 = expandTrigRules kind theta
-  | otherwise = do
-      -- Use the angle addition identity to reduce n recursively:
-      -- sin(nθ) = sin((n-1)θ + θ) = sin((n-1)θ)*cos(θ) + cos((n-1)θ)*sin(θ)
-      -- cos(nθ) = cos((n-1)θ + θ) = cos((n-1)θ)*cos(θ) - sin((n-1)θ)*sin(θ)
-      su <- expandTrigMultiple TrigSin (n - 1) theta
-      cu <- expandTrigMultiple TrigCos (n - 1) theta
-      sv <- expandTrigRules TrigSin theta
-      cv <- expandTrigRules TrigCos theta
-      case kind of
-        TrigSin -> do
-          left <- su .*. cv
-          right <- cu .*. sv
-          left .+. right
-        TrigCos -> do
-          left <- cu .*. cv
-          right <- su .*. sv
-          left .-. right
-
-mkTrig :: TrigKind -> SimplifiedExpr -> SimplifiedExpr
-mkTrig TrigSin = Sin'
-mkTrig TrigCos = Cos'
-
--- | Contract exponential expressions by combining products of exponentials and
--- rewriting powers of exponentials into a single exponential.
-contractExp :: SimplifiedExpr -> EvalResult SimplifiedExpr
-contractExp u@(Number' _)     = pure u
-contractExp u@(Fraction' _ _) = pure u
-contractExp u@(Symbol' _)     = pure u
-contractExp u                 = mapOperands contractExp u >>= contractExpRules
-
-contractExpRules :: SimplifiedExpr -> EvalResult SimplifiedExpr
-contractExpRules u = do
-  v <- expandMainOp u
-  case v of
-    Power' (Exp' x) s -> do
-      p <- x .*. s
-      contracted <- if needsFurtherContraction p then contractExpRules p else return p
-      pure $ Exp' contracted
-    Product' factors -> do
-      (p, s) <- foldM combineExpFactors (mkNumber 1, mkNumber 0) factors
-      if isZero s then return v else Exp' s .*. p
-    Sum' terms -> foldM combineExpTerms (mkNumber 0) terms
-    _ -> pure v
-  where
-    needsFurtherContraction expr = isProduct expr || isPower expr
-
-    combineExpFactors (p, s) factor = case factor of
-      Exp' n -> do
-        s' <- s .+. n
-        return (p, s')
-      _ -> do
-        p' <- p .*. factor
-        return (p', s)
-
-    combineExpTerms acc term
-      | isProduct term || isPower term = contractExpRules term >>= (acc .+.)
-      | otherwise = acc .+. term
-
--- | Separate an expression into a non-trig part and a sin/cos part.
---
--- Returns a pair (r, s) where:
--- - s is the product of sin/cos operands and positive integer powers of sin/cos
--- - r is the product of the remaining operands
--- For non-product expressions:
--- - if expression is sin/cos or a positive integer power of sin/cos, returns (1, expr)
--- - otherwise returns (expr, 1)
-separateSinCos :: SimplifiedExpr -> EvalResult (SimplifiedExpr, SimplifiedExpr)
-separateSinCos expr = case expr of
-  Product' factors -> do
-    let (trigFactors, restFactors) = foldr splitFactor ([], []) (NE.toList factors)
-    r <- buildProductOrOne restFactors
-    s <- buildProductOrOne trigFactors
-    pure (r, s)
-  _
-    | isSinCosLike expr -> pure (mkNumber 1, expr)
-    | otherwise -> pure (expr, mkNumber 1)
-  where
-    splitFactor factor (trigs, rests)
-      | isSinCosLike factor = (factor : trigs, rests)
-      | otherwise = (trigs, factor : rests)
-
-    isSinCosLike = \case
-      Sin' _ -> True
-      Cos' _ -> True
-      Power' base (Number' n)
-        | n > 0 -> case base of
-            Sin' _ -> True
-            Cos' _ -> True
-            _      -> False
-      _ -> False
-
-    buildProductOrOne []  = pure $ mkNumber 1
-    buildProductOrOne [u] = pure u
-    buildProductOrOne us  = simplify $ mkProduct (NE.fromList us)
-
 -- | Contract trigonometric expressions by combining products and powers of sin/cos.
 --
 -- The algorithm applies three product-to-sum identities:
---   sin(θ)sin(φ) = cos(θ-φ)/2 - cos(θ+φ)/2    (7.30)
---   cos(θ)cos(φ) = cos(θ+φ)/2 + cos(θ-φ)/2    (7.31)
---   sin(θ)cos(φ) = sin(θ+φ)/2 + sin(θ-φ)/2    (7.32)
+-- \[ \sin(\theta) \sin(\phi) = \frac{\cos(\theta-\phi)}{2} - \frac{\cos(\theta+\phi)}{2} \]
+-- \[ \cos(\theta) \cos(\phi) = \frac{\cos(\theta+\phi)}{2} + \frac{\cos(\theta-\phi)}{2} \]
+-- \[ \sin(\theta) \cos(\phi) = \frac{\sin(\theta+\phi)}{2} + \frac{\sin(\theta-\phi)}{2} \]
 --
--- It also contracts powers of sin and cos using formulas (7.35) and (7.36).
+-- It also contracts powers of sin and cos using the following formulas:
+--
+-- \[\sin^{n}(\theta)=\begin{cases}\frac{(-1)^{n}}{2^{n}}\binom{n}{n/2}+\frac{(-1)^{\frac{n}{2}}}{2^{n-1}}\sum_{j=0}^{\frac{n}{2}-1} \binom{n}{j}(-1)^{j}\cos((n-2j)\theta), & n\text{ even},\\[6pt]\frac{(-1)^{\frac{n-1}{2}}}{2^{n-1}}\sum_{j=0}^{\frac{n}{2}} \binom{n}{j}(-1)^{j}\sin((n-2j)\theta), & n\text{ odd}.\end{cases}\]
+-- \[\cos^{n}(\theta)=\begin{cases}\dfrac{\binom{n}{n/2}}{2^{n}}+\dfrac{1}{2^{n-1}}\displaystyle\sum_{j=0}^{\lfloor n/2-1\rfloor} {n\choose j}\cos((n-2j)\theta), & n\text{ even},\\[6pt]\frac{1}{2^{n-1}}\displaystyle\sum_{j=0}^{\lfloor n/2\rfloor} {n\choose j}\cos((n-2j)\theta), & n\text{ odd}.\end{cases}\]
+--
 -- An expression is in trigonometric-contracted form when:
---   1. Each product has at most one sin/cos operand
---   2. No power has a sin/cos base with positive integer exponent
+--
+--   1. Each product has at most one \(sin\) or \(cos\) operand
+--
+--   2. No power has a \(sin\) or \(cos\) base with positive integer exponent
+--
 --   3. Each complete sub-expression is algebraically expanded
+--
+-- >>> let expr = sin "x" ** 2 * cos "x" ** 2 :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= contractTrig
+-- Right "1 / 8 + (-1) / 8 * cos (4 * x)"
+--
+-- >>> let expr = cos "x" ** 4 :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= contractTrig
+-- Right "3 / 8 + 1 / 2 * cos (2 * x) + 1 / 8 * cos (4 * x)"
 contractTrig :: SimplifiedExpr -> EvalResult SimplifiedExpr
 contractTrig u@(Number' _) = pure u
 contractTrig u@(Fraction' _ _) = pure u
@@ -402,6 +340,140 @@ contractCosPower theta n
         (mkNumber 0)
         restTerms
 
+-- | Expand trigonometric functions \(sin\) or \(cos\) according to angle addition.
+--
+-- The angle addition rules applied are:
+-- \[\sin(\theta + \phi) = \sin(\theta)\cos(\phi) + \cos(\theta)\sin(\phi)\]
+-- \[\cos(\theta + \phi) = \cos(\theta)\cos(\phi) - \sin(\theta)\sin(\phi)\]
+-- \[\sin(-\theta) = -\sin(\theta)\]
+-- \[\cos(-\theta) = \cos(\theta)\]
+--
+-- An expression is in trigonometric-expanded form when
+--
+-- 1. It is not a sum
+--
+-- 2. It is not a product with an integer operand
+--
+-- >>> let expr = sin (4*"x") :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= expandTrig
+-- Right "4 * (cos x) ^ 3 * sin x + (-4) * cos x * (sin x) ^ 3"
+expandTrig :: SimplifiedExpr -> EvalResult SimplifiedExpr
+expandTrig expr = do
+  d <- denom expr >>= expandTrigCore
+  when (isZero d) $ throwError DivisionByZero
+  expandTrigCore expr >>= algebraicExpand
+
+expandTrigCore :: SimplifiedExpr -> EvalResult SimplifiedExpr
+expandTrigCore u@(Number' _)     = pure u
+expandTrigCore u@(Fraction' _ _) = pure u
+expandTrigCore u@(Symbol' _)     = pure u
+expandTrigCore (Sin' x)          = expandTrigCore x >>= expandTrigRules TrigSin
+expandTrigCore (Cos' x)          = expandTrigCore x >>= expandTrigRules TrigCos
+expandTrigCore u                 = mapOperands expandTrigCore u
+
+expandTrigRules :: TrigKind -> SimplifiedExpr -> EvalResult SimplifiedExpr
+expandTrigRules kind arg = do
+  arg' <- algebraicExpand arg
+  case arg' of
+    Sum' (f :| rest) -> do
+      r <- buildRestSum rest
+      expandTrigSum kind f r
+    Product' (Number' n :| rest) -> do
+      theta <- buildRestProduct rest
+      expandTrigMultiple kind n theta
+    _ -> pure $ mkTrig kind arg
+
+expandTrigSum :: TrigKind -> SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+expandTrigSum TrigSin u v = do
+  su <- expandTrigRules TrigSin u
+  cu <- expandTrigRules TrigCos u
+  sv <- expandTrigRules TrigSin v
+  cv <- expandTrigRules TrigCos v
+  left <- su .*. cv
+  right <- cu .*. sv
+  left .+. right
+expandTrigSum TrigCos u v = do
+  cu <- expandTrigRules TrigCos u
+  cv <- expandTrigRules TrigCos v
+  su <- expandTrigRules TrigSin u
+  sv <- expandTrigRules TrigSin v
+  left <- cu .*. cv
+  right <- su .*. sv
+  left .-. right
+
+expandTrigMultiple :: TrigKind -> Integer -> SimplifiedExpr -> EvalResult SimplifiedExpr
+expandTrigMultiple kind n theta
+  | n == 0 = pure $ case kind of
+      TrigSin -> mkNumber 0
+      TrigCos -> mkNumber 1
+  | n < 0 = do
+      expanded <- expandTrigMultiple kind (-n) theta
+      case kind of
+        TrigSin -> simplify $ mkUnaryDiff expanded
+        TrigCos -> pure expanded
+  | n == 1 = expandTrigRules kind theta
+  | otherwise = do
+      -- Use the angle addition identity to reduce n recursively:
+      -- sin(nθ) = sin((n-1)θ + θ) = sin((n-1)θ)*cos(θ) + cos((n-1)θ)*sin(θ)
+      -- cos(nθ) = cos((n-1)θ + θ) = cos((n-1)θ)*cos(θ) - sin((n-1)θ)*sin(θ)
+      su <- expandTrigMultiple TrigSin (n - 1) theta
+      cu <- expandTrigMultiple TrigCos (n - 1) theta
+      sv <- expandTrigRules TrigSin theta
+      cv <- expandTrigRules TrigCos theta
+      case kind of
+        TrigSin -> do
+          left <- su .*. cv
+          right <- cu .*. sv
+          left .+. right
+        TrigCos -> do
+          left <- cu .*. cv
+          right <- su .*. sv
+          left .-. right
+
+mkTrig :: TrigKind -> SimplifiedExpr -> SimplifiedExpr
+mkTrig TrigSin = Sin'
+mkTrig TrigCos = Cos'
+
+-- | Separate an expression \(u\) into a non-trigonometric part and a trigonometric part consisting of products and positive integer powers of \(\sin/\cos\).
+--
+-- Returns a pair \((r, s)\) where:
+--
+-- - \(s\) is the product of \(\sin/\cos\) operands and positive integer powers of \(\sin\ / \cos\) in the expression
+-- - \(r\) is the product of the remaining operands
+--
+-- For non-product expressions:
+--
+-- - If expression is \(\sin/\cos\) or a positive integer power of \(\sin/\cos\), returns \((1, u)\)
+-- - otherwise returns \((u, 1)\)
+separateSinCos :: SimplifiedExpr -> EvalResult (SimplifiedExpr, SimplifiedExpr)
+separateSinCos expr = case expr of
+  Product' factors -> do
+    let (trigFactors, restFactors) = foldr splitFactor ([], []) (NE.toList factors)
+    r <- buildProductOrOne restFactors
+    s <- buildProductOrOne trigFactors
+    pure (r, s)
+  _
+    | isSinCosLike expr -> pure (mkNumber 1, expr)
+    | otherwise -> pure (expr, mkNumber 1)
+  where
+    splitFactor factor (trigs, rests)
+      | isSinCosLike factor = (factor : trigs, rests)
+      | otherwise = (trigs, factor : rests)
+
+    isSinCosLike = \case
+      Sin' _ -> True
+      Cos' _ -> True
+      Power' base (Number' n)
+        | n > 0 -> case base of
+            Sin' _ -> True
+            Cos' _ -> True
+            _      -> False
+      _ -> False
+
+    buildProductOrOne []  = pure $ mkNumber 1
+    buildProductOrOne [u] = pure u
+    buildProductOrOne us  = simplify $ mkProduct (NE.fromList us)
+
 isSinCos :: SimplifiedExpr -> Bool
 isSinCos (Sin' _) = True
 isSinCos (Cos' _) = True
@@ -409,10 +481,15 @@ isSinCos _        = False
 
 -- | Substitute trigonometric functions tan/cot/sec/csc with sin/cos representations.
 --
--- tan(u) = sin(u) / cos(u)
--- cot(u) = cos(u) / sin(u)
--- sec(u) = 1 / cos(u)
--- csc(u) = 1 / sin(u)
+-- The substitutions applied are:
+-- \[\tan(\theta) = \frac{\sin(\theta)}{\cos(\theta)}\]
+-- \[\cot(\theta) = \frac{\cos(\theta)}{\sin(\theta)}\]
+-- \[\sec(\theta) = \frac{1}{\cos(\theta)}\]
+-- \[\csc(\theta) = \frac{1}{\sin(\theta)}\]
+--
+-- >>> let expr = Tan' "x" + Cot' "x" + Sec' "x" + Csc' "x" :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= trigSubs
+-- Right "(cos x) ^ (-1) + (sin x) ^ (-1) + cos x * (sin x) ^ (-1) + (cos x) ^ (-1) * sin x"
 trigSubs :: SimplifiedExpr -> EvalResult SimplifiedExpr
 trigSubs u@(Number' _) = pure u
 trigSubs u@(Fraction' _ _) = pure u
