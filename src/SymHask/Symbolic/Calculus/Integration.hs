@@ -24,8 +24,8 @@ import           SymHask.Symbolic.Basic                    (Pattern (..),
                                                             separateFactors,
                                                             subs, treeSize,
                                                             trialSubstitutions)
-import           SymHask.Symbolic.Basic.Polynomial         (algebraicExpand)
 import           SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
+import           SymHask.Symbolic.Polynomial               (algebraicExpand)
 import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
                                                             (./.))
 

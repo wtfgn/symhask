@@ -7,8 +7,7 @@ module SymHask.TranscendentalSpec
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Transcendental (contractExp, contractTrig,
                                                   expandExp, expandTrig,
-                                                  separateSinCos, simplifyTrig,
-                                                  trigSubs)
+                                                  separateSinCos, trigSubs)
 import           Test.Tasty                      (TestTree, testGroup)
 import           Test.Tasty.HUnit                (testCase, (@?=))
 import           TestUtils                       (simplifyOrFail)

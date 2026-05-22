@@ -18,14 +18,14 @@ import           SymHask.Symbolic                          (ExprError (..),
                                                             pattern (:**:),
                                                             pattern (:*:),
                                                             pattern (:+:),
-                                                            pattern ACoth',
-                                                            pattern ACsch',
-                                                            pattern ASech',
                                                             pattern Acos',
                                                             pattern Acosh',
                                                             pattern Acot',
+                                                            pattern Acoth',
                                                             pattern Acsc',
+                                                            pattern Acsch',
                                                             pattern Asec',
+                                                            pattern Asech',
                                                             pattern Asin',
                                                             pattern Asinh',
                                                             pattern Atan',
@@ -321,13 +321,13 @@ inverseHyperbolicFunctionTests =
           expectDiff (Atanh' mkX) xVar @?= Right ((mkNumber 1 + mkNumber (-1) * mkX ** mkNumber 2) ** mkNumber (-1))
     , testCase "acoth rule" $
         assertRight mkVarX $ \xVar ->
-          expectDiff (ACoth' mkX) xVar @?= Right ((mkNumber 1 + mkNumber (-1) * mkX ** mkNumber 2) ** mkNumber (-1))
+          expectDiff (Acoth' mkX) xVar @?= Right ((mkNumber 1 + mkNumber (-1) * mkX ** mkNumber 2) ** mkNumber (-1))
     , testCase "asech rule" $
         assertRight mkVarX $ \xVar ->
-          expectDiff (ASech' mkX) xVar @?= Right (mkProduct (NE.fromList [mkNumber (-1), mkX ** mkNumber (-1), (mkNumber 1 + mkNumber (-1) * mkX ** mkNumber 2) ** mkFraction (-1) 2]))
+          expectDiff (Asech' mkX) xVar @?= Right (mkProduct (NE.fromList [mkNumber (-1), mkX ** mkNumber (-1), (mkNumber 1 + mkNumber (-1) * mkX ** mkNumber 2) ** mkFraction (-1) 2]))
     , testCase "acsch rule" $
         assertRight mkVarX $ \xVar ->
-          expectDiff (ACsch' mkX) xVar @?= Right (mkProduct (NE.fromList [mkNumber (-1), abs mkX ** mkNumber (-1), (mkNumber 1 + mkX ** mkNumber 2) ** mkFraction (-1) 2]))
+          expectDiff (Acsch' mkX) xVar @?= Right (mkProduct (NE.fromList [mkNumber (-1), abs mkX ** mkNumber (-1), (mkNumber 1 + mkX ** mkNumber 2) ** mkFraction (-1) 2]))
     ]
 
 unknownFunctionTests :: TestTree

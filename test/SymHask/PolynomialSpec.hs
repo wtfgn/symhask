@@ -4,33 +4,26 @@ module SymHask.PolynomialSpec
     ( tests
     ) where
 
-import qualified Data.HashSet                      as HS
-import           Data.List.NonEmpty                (NonEmpty ((:|)))
-import           SymHask.Symbolic                  (ExprError (..),
-                                                    SimplifiedExpr,
-                                                    Simplify (simplify),
-                                                    UnsimplifiedExpr,
-                                                    mkFraction, mkFunction,
-                                                    mkNumber, mkSymbol)
-import           SymHask.Symbolic.Basic.Polynomial (algebraicExpand,
-                                                    coeffVarMonomial,
-                                                    coefficientGpe,
-                                                    coefficientSv, collectTerms,
-                                                    degreeGpe, degreeMonomialSv,
-                                                    degreeSv, denom,
-                                                    expandMainOp, isMonomialGpe,
-                                                    isMonomialSv,
-                                                    isPolynomialGpe,
-                                                    isPolynomialSv,
-                                                    isRationalGre,
-                                                    leadingCoefficientGpe,
-                                                    leadingCoefficientSv, numer,
-                                                    rationalExpand,
-                                                    rationalVariables,
-                                                    rationalise, variables)
-import           Test.Tasty                        (TestTree, testGroup)
-import           Test.Tasty.HUnit                  (testCase, (@?=))
-import           TestUtils                         (simplifyOrFail)
+import qualified Data.HashSet                as HS
+import           Data.List.NonEmpty          (NonEmpty ((:|)))
+import           SymHask.Symbolic            (ExprError (..), SimplifiedExpr,
+                                              Simplify (simplify),
+                                              UnsimplifiedExpr, mkFraction,
+                                              mkFunction, mkNumber, mkSymbol)
+import           SymHask.Symbolic.Polynomial (algebraicExpand, coeffVarMonomial,
+                                              coefficientGpe, coefficientSv,
+                                              collectTerms, degreeGpe,
+                                              degreeMonomialSv, degreeSv, denom,
+                                              expandMainOp, isMonomialGpe,
+                                              isMonomialSv, isPolynomialGpe,
+                                              isPolynomialSv, isRationalGre,
+                                              leadingCoefficientGpe,
+                                              leadingCoefficientSv, numer,
+                                              rationalExpand, rationalVariables,
+                                              rationalise, variables)
+import           Test.Tasty                  (TestTree, testGroup)
+import           Test.Tasty.HUnit            (testCase, (@?=))
+import           TestUtils                   (simplifyOrFail)
 
 tests :: TestTree
 tests =
