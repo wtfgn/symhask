@@ -15,14 +15,16 @@ import           Control.Monad                     (foldM, when)
 import           Control.Monad.Error.Class         (throwError)
 import           Data.List.NonEmpty                (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                as NE
+import           Math.Combinatorics.Exact.Binomial (choose)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic            (isZero, mapOperands)
+import           SymHask.Symbolic.Basic            (buildRestProduct,
+                                                    buildRestSum, isZero,
+                                                    mapOperands)
 import           SymHask.Symbolic.Basic.Polynomial (algebraicExpand, denom,
                                                     expandMainOp)
-import           SymHask.Symbolic.Basic.Utils      (binomial, buildRestProduct,
-                                                    buildRestSum)
 import           SymHask.Symbolic.Simplification   ((.**.), (.*.), (.+.), (.-.),
                                                     (./.))
+
 
 -- | Expand expressions in the exponential sense.
 --
@@ -326,13 +328,13 @@ contractSinPower theta n
       let m = n `div` 2
       let multiplier = (-1) ^ m
       -- Constant term: C(n, n/2) / 2^n (no multiplier here)
-      constTerm <- mkNumber (binomial n m) ./. mkNumber (2 ^ n)
+      constTerm <- mkNumber (choose n m) ./. mkNumber (2 ^ n)
       -- Rest sum with (-1)^(n/2) multiplier
       let restTerms = [0 .. m - 1]
       restSum <-
         foldM
           ( \acc j -> do
-              let coeff = multiplier * (-1) ^ j * binomial n j
+              let coeff = multiplier * (-1) ^ j * choose n j
               let arg = mkNumber (n - 2 * j) .*. theta
               arg' <- arg
               let cosArg = mkFunction "cos" (arg' :| [])
@@ -350,7 +352,7 @@ contractSinPower theta n
       let restTerms = [0 .. m]
       foldM
         ( \acc j -> do
-            let coeff = sign * (-1) ^ j * binomial n j
+            let coeff = sign * (-1) ^ j * choose n j
             let arg = mkNumber (n - 2 * j) .*. theta
             arg' <- arg
             let sinArg = mkFunction "sin" (arg' :| [])
@@ -366,13 +368,13 @@ contractCosPower theta n
   | even n = do
       -- For even n: formula 7.35
       let m = n `div` 2
-      let term1 = mkNumber (binomial n m) ./. mkNumber (2 ^ n)
+      let term1 = mkNumber (choose n m) ./. mkNumber (2 ^ n)
       term1' <- term1
       let restTerms = [0 .. m - 1]
       restSum <-
         foldM
           ( \acc j -> do
-              let coeff = binomial n j
+              let coeff = choose n j
               let arg = mkNumber (n - 2 * j) .*. theta
               arg' <- arg
               let cosArg = mkFunction "cos" (arg' :| [])
@@ -389,7 +391,7 @@ contractCosPower theta n
       let restTerms = [0 .. m]
       foldM
         ( \acc j -> do
-            let coeff = binomial n j
+            let coeff = choose n j
             let arg = mkNumber (n - 2 * j) .*. theta
             arg' <- arg
             let cosArg = mkFunction "cos" (arg' :| [])

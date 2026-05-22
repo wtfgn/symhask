@@ -23,20 +23,22 @@ module SymHask.Symbolic.Basic.Polynomial
     , variables
     ) where
 
-import           Control.Applicative             ((<|>))
-import           Control.Monad                   (foldM)
-import           Control.Monad.Error.Class       (MonadError (throwError))
-import qualified Data.HashMap.Strict             as HM
-import qualified Data.HashSet                    as HS
-import           Data.List.NonEmpty              (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty              as NE
-import           Data.Maybe                      (catMaybes)
-import           Data.Text                       (Text)
+import           Control.Applicative               ((<|>))
+import           Control.Monad                     (foldM)
+import           Control.Monad.Error.Class         (MonadError (throwError))
+import           Data.Either.Extra                 (eitherToMaybe)
+import qualified Data.HashMap.Strict               as HM
+import qualified Data.HashSet                      as HS
+import           Data.List.NonEmpty                (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty                as NE
+import           Data.Maybe                        (catMaybes)
+import           Data.Text                         (Text)
+import           Math.Combinatorics.Exact.Binomial (choose)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic          (freeOf, setFreeOf)
-import           SymHask.Symbolic.Basic.Utils    (binomial, buildRestProduct,
-                                                  buildRestSum, eitherToMaybe)
-import           SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (./.))
+import           SymHask.Symbolic.Basic            (buildRestProduct,
+                                                    buildRestSum, freeOf,
+                                                    setFreeOf)
+import           SymHask.Symbolic.Simplification   ((.**.), (.*.), (.+.), (./.))
 
 {- | Check whether an expression is a monomial in a single variable.
 
@@ -572,7 +574,7 @@ expandPower u n
  where
   -- expand term for a given k: c * f^(n-k) * Expand_power(r,k)
   expandTerm f r n' k = do
-    let c = binomial n' k
+    let c = choose n' k
     leftPow <- simplify $ mkPower f (mkNumber (n' - k))
     rightPow <- expandPower r k
     leftTerm <- mkNumber c .*. leftPow
@@ -720,7 +722,7 @@ expandMainPower u n
 
 expandMainPowerTerm :: SimplifiedExpr -> SimplifiedExpr -> Integer -> Integer -> EvalResult SimplifiedExpr
 expandMainPowerTerm f r n' k = do
-  let c = binomial n' k
+  let c = choose n' k
   leftPow <- simplify $ mkPower f (mkNumber (n' - k))
   rightPow <- simplify $ mkPower r (mkNumber k)
   coeff <- mkNumber c .*. leftPow

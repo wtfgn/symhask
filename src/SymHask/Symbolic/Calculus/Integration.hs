@@ -11,6 +11,7 @@ module SymHask.Symbolic.Calculus.Integration
 
 import           Control.Applicative                       ((<|>))
 import           Control.Monad.Error.Class                 (MonadError (throwError))
+import           Data.Either.Extra                         (eitherToMaybe)
 import qualified Data.HashSet                              as HS
 import           Data.List                                 (find, sortOn)
 import           Data.List.NonEmpty                        (NonEmpty ((:|)))
@@ -24,7 +25,6 @@ import           SymHask.Symbolic.Basic                    (Pattern (..),
                                                             subs, treeSize,
                                                             trialSubstitutions)
 import           SymHask.Symbolic.Basic.Polynomial         (algebraicExpand)
-import           SymHask.Symbolic.Basic.Utils              (eitherToMaybe)
 import           SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
 import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
                                                             (./.))
@@ -38,7 +38,6 @@ import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
 -- | Integration variable, similar to DiffVar
 newtype IntegrationVar
   = IntSymbol Text
-  -- | IntFunction Text (NE.NonEmpty Text) -- Undefined functions
   deriving (Eq, Show)
 
 -- | Rule in the integration table
