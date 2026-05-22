@@ -20,7 +20,7 @@ import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic            (buildRestProduct,
                                                     buildRestSum, isZero,
                                                     mapOperands)
-import           SymHask.Symbolic.Basic.Polynomial (algebraicExpand, denom,
+import           SymHask.Symbolic.Polynomial       (algebraicExpand, denom,
                                                     expandMainOp)
 import           SymHask.Symbolic.Simplification   ((.**.), (.*.), (.+.), (.-.),
                                                     (./.))
