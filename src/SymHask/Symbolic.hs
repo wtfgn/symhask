@@ -137,12 +137,12 @@ import           TextShow           (TextShow)
 import           TextShow.Generic   (FromGeneric (FromGeneric))
 
 
-
 -- ============================================================================
 -- * Complete GADT for All Expression Types
 -- ============================================================================
 -- $setup
 -- >>> import SymHask.Printer.Haskell (toHaskell)
+-- Module `SymHask.Printer.Haskell' does not export `toHaskell'.
 
 -- | Core symbolic expression type.
 -- Its parameter indicates whether the expression is simplified or not.
