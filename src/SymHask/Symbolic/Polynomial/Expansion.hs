@@ -1,3 +1,9 @@
+-- |
+-- Module: SymHask.Symbolic.Polynomial.Expansion
+-- Description: Algebraic expansion of symbolic expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
 module SymHask.Symbolic.Polynomial.Expansion
     ( algebraicExpand
     , expandMainOp
@@ -15,14 +21,24 @@ import           SymHask.Symbolic.Polynomial.Rational (denom, numer,
                                                        rationalise)
 import           SymHask.Symbolic.Simplification      ((.*.), (.+.), (./.))
 
-{- | Algebraic_expand for integer-exponent case.
-Expands sums, products and integer powers (n >= 2) recursively.
-Macsyma-style extension (Properties 1 & 2):
-  1. Each complete sub-expression is in expanded form.
-  2. The denominator of each complete sub-expression is in expanded form.
-Handles: function arguments are recursively expanded, and denominators
-(represented as negative powers) are expanded and checked for zero.
--}
+-- $setup
+-- >>> import SymHask.Symbolic
+
+-- | Perform algebraic expansion on a symbolic expression, fully distributing
+-- products over sums and expanding powers.
+--
+-- Expression \(u\) is in expanded form if @variables (u)@ does not contain a sum.
+--
+-- Also, each complete sub-expression of \(u\) and the denominator of each complete sub-expression
+-- is in expanded form.
+--
+-- >>> let expr = ("x" + 2) * ("x" + 3) * ("x" + 4):: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= algebraicExpand
+-- Right "24 + 26 * x + 9 * x ^ 2 + x ^ 3"
+--
+-- >>> let expr = ("x" + 1)**(5/2):: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= algebraicExpand
+-- Right "(1 + x) ^ (1 / 2) + 2 * x * (1 + x) ^ (1 / 2) + x ^ 2 * (1 + x) ^ (1 / 2)"
 algebraicExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
 algebraicExpand u = do
   n <- numer u
@@ -36,11 +52,10 @@ algebraicExpand u = do
         then pure n'
         else n' ./. d'
 
-{- | Core structural expander used after numerator/denominator splitting.
-This keeps the recursive expansion logic local to sums, products, powers,
-and functions, while `algebraicExpand` handles quotient-like expressions by
-splitting them first with `numer` and `denom`.
--}
+-- | Core structural expander used after numerator/denominator splitting.
+-- This keeps the recursive expansion logic local to sums, products, powers,
+-- and functions, while `algebraicExpand` handles quotient-like expressions by
+-- splitting them first with `numer` and `denom`.
 expandCore :: SimplifiedExpr -> EvalResult SimplifiedExpr
 expandCore u = case u of
   Sum' (f :| []) -> pure f
@@ -71,11 +86,10 @@ expandCore u = case u of
       Nothing      -> pure u
   _ -> pure u
 
-{- | Helper to recursively expand products and powers formed during expansion.
-We only recurse when the expression still contains a genuinely expandable
-sum or a power with an expandable base. This avoids re-entering on stable
-products like x*y, which would otherwise loop forever.
--}
+-- | Helper to recursively expand products and powers formed during expansion.
+-- We only recurse when the expression still contains a genuinely expandable
+-- sum or a power with an expandable base. This avoids re-entering on stable
+-- products like x*y, which would otherwise loop forever.
 tryExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
 tryExpand expr
   | needsFurtherExpansion expr = expandCore expr
@@ -92,9 +106,8 @@ tryExpand expr
     Function' _ args -> any needsFurtherExpansion (NE.toList args)
     _ -> False
 
-{- | Expand_product as in pseudocode: expand product of two expanded expressions.
-After computing the product, recursively expand any newly formed structures.
--}
+-- | Expand_product as in pseudocode: expand product of two expanded expressions.
+-- After computing the product, recursively expand any newly formed structures.
 expandProduct :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
 expandProduct (Sum' (f :| rest)) s = do
   rRem <- buildRestSum rest
@@ -107,9 +120,8 @@ expandProduct r s = do
   -- Recursively expand if the result contains unexpanded products or powers
   tryExpand prod
 
-{- | Expand_power: expand (u)^n where n >= 2 and u is expanded.
-After expansion, recursively expand any newly formed structures.
--}
+-- | Expand_power: expand (u)^n where n >= 2 and u is expanded.
+-- After expansion, recursively expand any newly formed structures.
 expandPower :: SimplifiedExpr -> Integer -> EvalResult SimplifiedExpr
 expandPower u n
   | n <= 0 = pure $ mkNumber 1
@@ -139,10 +151,9 @@ expandPower u n
     leftTerm <- mkNumber c .*. leftPow
     expandProduct leftTerm rightPow
 
-{- | Expand a positive fractional power by splitting the exponent into its
-integer part and fractional remainder:
-  u^(q + m) = u^m * u^q,  where  q = floor(f), m = f - floor(f).
--}
+-- | Expand a positive fractional power by splitting the exponent into its
+-- integer part and fractional remainder:
+--   u^(q + m) = u^m * u^q,  where  q = floor(f), m = f - floor(f).
 expandRationalPower :: SimplifiedExpr -> Integer -> Integer -> EvalResult SimplifiedExpr
 expandRationalPower u num den = do
   let (wholePart, remainder) = num `divMod` den
@@ -161,14 +172,20 @@ expandRationalPower u num den = do
         then pure fractionalExpanded
         else expandProduct fractionalExpanded wholeExpanded
 
-{- | Transform an algebraic expression to rational-expanded form.
-
-Steps:
-1. Rationalize the expression (bring to common denominators, etc.).
-2. Extract numerator and denominator with `numer` / `denom`.
-3. Algebraically expand numerator and denominator separately.
-4. Reassemble; if denominator expands to 0 return DivisionByZero.
--}
+-- | Transform an algebraic expression to rational-expanded form.
+--
+-- Steps:
+--
+-- 1. Rationalize the expression (bring to common denominators, etc.).
+--
+-- 2. Extract numerator and denominator with `numer` / `denom`.
+--
+-- 3. Algebraically expand numerator and denominator separately.
+--
+-- 4. Reassemble; if denominator expands to 0 return DivisionByZero.
+--
+-- A rational-expanded expression is rationalised and,
+-- both numerator and denominator are in expanded form.
 rationalExpand :: SimplifiedExpr -> EvalResult SimplifiedExpr
 rationalExpand = go
  where
@@ -195,13 +212,14 @@ rationalExpand = go
           then pure n'
           else n' ./. d'
 
-{- | Expand only the main operator of an expression.
-
-Sums are left unchanged. Products are distributed over immediate sum
-operands, and powers with a positive integer exponent are expanded only
-against the top-level sum in the base. Nested sums and powers are left
-intact until a later pass expands them.
--}
+-- | Expand only the main operator of an expression.
+--
+-- This means the operator only expand the top-level structure of the expression,
+-- without recursively expanding the operands of sums, products, or powers.
+--
+-- >>> let expr = "x" * (2 + (1 + "x")**2) :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ simplify expr >>= expandMainOp
+-- Right "2 * x + x * (1 + x) ^ 2"
 expandMainOp :: SimplifiedExpr -> EvalResult SimplifiedExpr
 expandMainOp u@(Number' _) = pure u
 expandMainOp u@(Fraction' _ _) = pure u

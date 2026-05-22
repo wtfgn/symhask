@@ -5,29 +5,38 @@
 -- License: BSD-3-Clause
 -- Maintainer: exal59@yahoo.com
 --
--- Support for operations on polynomials and monomials, including checking
+-- Support for operations on polynomials and monomials,
+-- such as expansion, collection of like terms, and degree calculations.
 module SymHask.Symbolic.Polynomial
-    ( algebraicExpand
-    , coeffVarMonomial
-    , coefficientGpe
-    , coefficientSv
-    , collectTerms
-    , degreeGpe
-    , degreeSv
-    , denom
-    , expandMainOp
-    , isMonomialGpe
+    ( -- * Predicates
+      isMonomialGpe
     , isMonomialSv
     , isPolynomialGpe
     , isPolynomialSv
     , isRationalGre
-    , leadingCoefficientGpe
-    , leadingCoefficientSv
-    , numer
+      -- * Expansion
+    , algebraicExpand
+    , expandMainOp
     , rationalExpand
+      -- * Analysis
+      -- ** Generalised polynomials
+    , coeffVarMonomial
+    , coefficientGpe
+    , degreeGpe
+    , leadingCoefficientGpe
     , rationalVariables
-    , rationalise
     , variables
+      -- ** Single-variable polynomials
+    , coefficientSv
+    , degreeMonomialSv
+    , degreeSv
+    , leadingCoefficientSv
+      -- * Rational polynomials
+    , denom
+    , numer
+    , rationalise
+      -- * Term collection
+    , collectTerms
     ) where
 
 import           Control.Monad                              (foldM)
@@ -45,9 +54,9 @@ import           SymHask.Symbolic.Simplification            ((.*.), (.+.))
 Returns the collected form of u, or Undefined (Left) if u is not a GPE in S.
 In collected form, u is a GME in S or a sum of GMEs with distinct variable parts.
 -}
-collectTerms :: SimplifiedExpr -> HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
-collectTerms u vars
-  | not (isPolynomialGpe u vars) =
+collectTerms :: HS.HashSet SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
+collectTerms vars u
+  | not (isPolynomialGpe vars u) =
       Left $ UnsupportedOperation "collectTerms: expression is not a GPE"
   | u `HS.member` vars = pure u -- already a single variable, which is a GME
   | otherwise = case u of
@@ -58,7 +67,7 @@ collectTerms u vars
 collectFromSum :: [SimplifiedExpr] -> HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
 collectFromSum operands vars = do
   -- Extract coefficient and variable part for each operand
-  pairs <- mapM (`coeffVarMonomial` vars) operands
+  pairs <- mapM (coeffVarMonomial vars) operands
 
   -- Fold into a hashmap keyed by variable part, summing coefficients
   let insertPair m (coef, varPart) =

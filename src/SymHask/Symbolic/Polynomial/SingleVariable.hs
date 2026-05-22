@@ -179,9 +179,9 @@ degreeSv x expr =
 -- >>> degreeMonomialSv "x" <$> (simplify (("x" + 1) :: UnsimplifiedExpr))
 -- Right Nothing
 --
--- If the expression is a monomial in \(x\), returns Just its degree.
--- For constants, the degree is \(0\).
--- Returns Nothing if the expression is not a monomial in \(x\).
+-- If the expression is a monomial in x, returns Just its degree.
+-- For constants, the degree is 0.
+-- Returns Nothing if the expression is not a monomial in x.
 degreeMonomialSv :: Text -> SimplifiedExpr -> Maybe Integer
 degreeMonomialSv x expr = snd <$> monomialSummary x expr
 
