@@ -36,7 +36,6 @@ library
       SymHask.Symbolic.Basic
       SymHask.Symbolic.Basic.Polynomial
       SymHask.Symbolic.Basic.Substitution
-      SymHask.Symbolic.Basic.Utils
       SymHask.Symbolic.Calculus
       SymHask.Symbolic.Calculus.Differentiation
       SymHask.Symbolic.Calculus.Integration
@@ -59,6 +58,8 @@ library
     , containers >=0.6 && <0.8
     , criterion
     , deepseq >=1.4 && <1.6
+    , exact-combinatorics
+    , extra
     , hashable ==1.4.*
     , mtl ==2.3.1.*
     , text >=2.0 && <2.2
@@ -84,6 +85,8 @@ executable symhask-exe
     , containers >=0.6 && <0.8
     , criterion
     , deepseq >=1.4 && <1.6
+    , exact-combinatorics
+    , extra
     , hashable ==1.4.*
     , mtl ==2.3.1.*
     , symhask
@@ -119,6 +122,8 @@ test-suite symhask-test
     , containers
     , criterion
     , deepseq >=1.4 && <1.6
+    , exact-combinatorics
+    , extra
     , hashable ==1.4.*
     , mtl ==2.3.1.*
     , symhask
