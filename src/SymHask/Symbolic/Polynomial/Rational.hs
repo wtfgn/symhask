@@ -26,7 +26,7 @@ import           SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (./.))
 -- $setup
 -- >>> import SymHask.Printer.Haskell
 
--- | Rationalize an expression by transforming it into a single fraction.
+-- | Rationalise an expression by transforming it into a single fraction.
 --
 -- >>> toHaskell <$> (simplify (1 + 1/"x" :: UnsimplifiedExpr) >>=rationalise)
 -- Right "x ^ (-1) * (1 + x)"
