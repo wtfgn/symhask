@@ -14,6 +14,7 @@ module SymHask.Symbolic.Polynomial.SingleVariable
     , coefficientSv
     , leadingCoefficientSv
       -- * Degrees
+    , degreeMonomialSv
     , degreeSv
     ) where
 
@@ -144,7 +145,7 @@ leadingCoefficientSv x expr =
 --
 -- For a monomial, returns its degree.
 -- For a sum of monomials, returns the maximum degree among all terms.
--- Returns `Nothing` if the expression is not polynomial in x.
+-- Returns `Nothing` if the expression is not polynomial in \(x\).
 --
 -- >>> degreeSv "x" <$> (simplify ((2 * "x" ^ 3 + 4 * "x" + 5) :: UnsimplifiedExpr))
 -- Right (Just 3)
@@ -178,9 +179,9 @@ degreeSv x expr =
 -- >>> degreeMonomialSv "x" <$> (simplify (("x" + 1) :: UnsimplifiedExpr))
 -- Right Nothing
 --
--- If the expression is a monomial in x, returns Just its degree.
--- For constants, the degree is 0.
--- Returns Nothing if the expression is not a monomial in x.
+-- If the expression is a monomial in \(x\), returns Just its degree.
+-- For constants, the degree is \(0\).
+-- Returns Nothing if the expression is not a monomial in \(x\).
 degreeMonomialSv :: Text -> SimplifiedExpr -> Maybe Integer
 degreeMonomialSv x expr = snd <$> monomialSummary x expr
 
