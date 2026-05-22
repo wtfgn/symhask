@@ -24,25 +24,24 @@ import           TextShow           (showt)
 -- | Converts an 'Expr' into an equivalent LaTeX expression.
 --
 -- >>> toLaTeX $ (exp 5 :: UnsimplifiedExpr)
--- WAS WAS "e^{5}"
--- WAS NOW "e^{5}"
--- NOW "e^{5}"
+-- "e^{5}"
 --
 -- Symbols are included without quotation.
 --
 -- >>> toLaTeX $ (exp "x" :: UnsimplifiedExpr)
--- >>> toLaTeX $ (("x" + 4 * sin "y") :: UnsimplifiedExpr)
+-- >>> toLaTeX $ ("x" + "y" + "z" :: UnsimplifiedExpr)
+-- "e^{x}"
+-- "x + y + z"
 --
 -- Since the text for symbols are included as is, we can also include LaTeX symbols:
 --
 -- >>> toLaTeX $ (exp "\\delta_0" :: UnsimplifiedExpr)
---
--- >>> putStrLn . toLaTeX $ ((sin "x" + cos pi) :: UnsimplifiedExpr)
+-- "e^{\\delta_0}"
 toLaTeX :: Expr a -> Text
 toLaTeX = \case
     Number' n -> showt n
     Fraction' n d -> "\\frac" <> brace (showt n) <> brace (showt d)
-    Symbol' "pi" -> "\\pi"
+    Pi' -> "\\pi"
     Symbol' s -> s
     UnaryDiff' x -> "-" <> asArg x
     BinaryDiff' x y -> asAddInitialArg x <> " - " <> asAddTrailingArg y

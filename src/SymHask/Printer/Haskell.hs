@@ -1,3 +1,12 @@
+-- |
+-- Module: SymHask.Printer.Haskell
+-- Description: Convert symbolic expressions to Haskell code
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- Support for converting symbolic representations of mathematical expressions
+-- into equivalent Haskell code.
 module SymHask.Printer.Haskell
     ( toHaskell
     ) where
@@ -9,6 +18,12 @@ import           SymHask.Symbolic
 import           TextShow           (showt)
 
 -- | Convert an expression to a Haskell expression
+--
+-- >>> toHaskell $ (exp 5 :: UnsimplifiedExpr)
+-- "exp 5"
+--
+-- >>> toHaskell $ ("x" / 4 + "y" / sin "x" :: UnsimplifiedExpr)
+-- "x / 4 + y / (sin x)"
 toHaskell :: Expr a -> Text
 toHaskell = \case
   Number' n -> showt n
@@ -36,9 +51,8 @@ toHaskell = \case
     let argStrs = map asArg $ NE.toList args
      in fname <> " " <> mconcat (intersperse " " argStrs)
 
-{- | Show numbers and symbols as is, while surrounding everything
-else in parentheses.
--}
+-- | Show numbers and symbols as is, while surrounding everything
+-- else in parentheses.
 asArg :: Expr a -> Text
 asArg x@(Number' n)
   | n >= 0 = toHaskell x
