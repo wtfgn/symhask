@@ -4,17 +4,18 @@ module Main
     ( main
     ) where
 
-import           Control.Monad.IO.Class                    ()
-import qualified Data.HashSet                              as HS
-import qualified Data.List.NonEmpty                        as NE
-import           Data.Text                                 (Text)
-import qualified Data.Text                                 as T
-import           SymHask.Printer.Haskell                   (toHaskell)
+import           Control.Monad.IO.Class          ()
+import qualified Data.HashSet                    as HS
+import qualified Data.List.NonEmpty              as NE
+import           Data.Text                       (Text)
+import qualified Data.Text                       as T
+import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic
 import           SymHask.Symbolic.Calculus
 import           SymHask.Symbolic.Simplification ()
-import  SymHask.Symbolic.Transcendental
+import           SymHask.Symbolic.Transcendental
+
 
 testDiff :: UnsimplifiedExpr -> Text -> IO ()
 testDiff expr varName = do
@@ -153,7 +154,7 @@ runDiff = do
   where
     x = mkSymbol "x"
     expr :: UnsimplifiedExpr
-    expr = x ** 3 + 2 * x ** 2 + x + 5 
+    expr = x ** 3 + 2 * x ** 2 + x + 5
 
 
 -- Test commit
