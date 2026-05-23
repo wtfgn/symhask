@@ -4,13 +4,40 @@ SymHask is a small computer algebra system in Haskell. It provides symbolic expr
 
 It also includes a simple REPL example to demonstrate the library in action. That REPL is only an example program, not part of the core library API.
 
+## Installation
+
+To use SymHask locally, clone the repository and build it with Stack:
+
+```bash
+git clone https://github.com/wtfgn/symhask.git
+cd symhask
+stack build
+stack install
+```
+
+After that, you can import `SymHask` from GHCi or from your own Haskell files. If you prefer Cabal, the same workflow can be done with `cabal build` and `cabal install`.
+
+For Stack-based projects, add SymHask as a dependency in the appropriate build target and, if needed, list it under `extra-deps` in `stack.yaml`.
+
+```yaml
+# stack.yaml
+extra-deps:
+  - symhask
+```
+
 ## Quick Start
 
-In GHCi:
+In [GHCi]:
+
+```shell
+$ stack ghci --no-load
+```
+
+Then, load the `SymHask` module.
 
 ```haskell
-:load SymHask
-import SymHask
+>>> :load SymHask
+>>> let expr = "x"**2 + 2*"x" + 1 :: UnsimplifiedExpr
 ```
 
 In a Haskell file:
@@ -52,6 +79,8 @@ Right "(1 + x) ^ (1 / 2) + 2 * x * (1 + x) ^ (1 / 2) + x ^ 2 * (1 + x) ^ (1 / 2)
 ```
 
 For more examples, see the Haddock comments in `src/SymHask.hs` and the submodules under `src/SymHask/`.
+
+[GHCi]: https://downloads.haskell.org/ghc/latest/docs/users_guide/ghci.html
 
 ## Module Layout
 
