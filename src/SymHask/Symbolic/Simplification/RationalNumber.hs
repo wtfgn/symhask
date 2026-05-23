@@ -22,9 +22,10 @@ import           SymHask.Symbolic
 simplifyRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 simplifyRNE = simplifyRNEStep >=> toStandardRNE
 
--- | This function converts a simplified rational number expression into a standard form
+-- | This function converts a `Fraction` or `Number` into a standard form
 -- where the numerator and denominator are coprime, and the denominator is positive.
--- It also handles cases where the numerator is zero or when the denominator is zero (which results in an error).
+--
+-- Returns a `Fraction` in standard form or a `Number`
 toStandardRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 toStandardRNE = \case
   Number' n -> pure $ mkNumber n
@@ -38,7 +39,7 @@ toStandardRNE = \case
           n' = if d > 0 then n `div` g else (-n) `div` g
           d' = if d > 0 then d `div` g else (-d) `div` g
          in
-          pure $ coerce (mkFraction n' d')
+          pure $ mkFraction n' d'
   _ ->
     throwError $
       UnsupportedOperation

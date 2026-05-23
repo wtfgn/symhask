@@ -4,6 +4,14 @@
 {-# LANGUAGE ViewPatterns      #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+-- |
+-- Module: SymHask.Symbolic.Simplification
+-- Description: Automatic simplification of symbolic expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- This module provides support for automatic simplification of symbolic expressions.
 module SymHask.Symbolic.Simplification
     ( (.**.)
     , (.*.)
@@ -26,7 +34,7 @@ infixl 6 .+., .-.
 infixl 7 .*., ./.
 infixr 8 .**.
 
--- These are just shorthands for constructing the corresponding UnsimplifiedExpr and then simplifying it.
+-- | These are just shorthands for constructing the corresponding UnsimplifiedExpr and then simplifying it.
 -- Not for building large expressions due to potential performance issues with repeated simplification.
 (.+.), (.-.), (.*.), (./.), (.**.) :: SimplifiedExpr -> SimplifiedExpr -> EvalResult SimplifiedExpr
 (.+.) (unsimplify -> x) (unsimplify -> y) = simplify (x + y)

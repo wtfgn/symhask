@@ -1,36 +1,46 @@
 {-# LANGUAGE MultiWayIf   #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- | Basic symbolic utilities and helpers.
+-- |
+-- Module: SymHask.Symbolic.Basic
+-- Description: Basic symbolic expression analysis and utilities
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
 --
--- Provides functions for expression analysis (symbol extraction,
--- trial substitutions, factor separation), small numeric helpers, and
--- utilities used by the simplifiers.
+-- Supports basic analysis of symbolic expressions,
+-- including function parity, linear form detection, free-of checks, and substitution.
 module SymHask.Symbolic.Basic
-    ( FunctionParity (..)
+    ( -- * Analysis
+      FunctionParity (..)
     , LinearForm (..)
+    , completeSubExprs
+    , evenOdd
+    , linearForm
+    , separateFactors
+      -- * Free-of checks
+    , freeOf
+    , setFreeOf
+      -- ** Complexity
+    , treeSize
+      -- ** Operand analysis
+    , exponents
+    , operands
+    , symbols
+      -- * Substitution
     , Substitution.Pattern (..)
     , Substitution.Replacement (..)
-    , buildRestProduct
-    , buildRestSum
-    , completeSubExprs
     , concurSubs
+    , seqSubs
+    , subs
+      -- * Evaluation
     , evalAbs
     , evalMax
-    , evenOdd
-    , exponents
-    , freeOf
+      -- * Utilities
+    , buildRestProduct
+    , buildRestSum
     , isZero
-    , linearForm
     , mapOperands
-    , operands
-    , separateFactors
-    , seqSubs
-    , setFreeOf
-    , subs
-    , symbols
-    , treeSize
-    , trialSubstitutions
     ) where
 
 import           Control.Monad
@@ -38,30 +48,48 @@ import           Control.Monad.Error.Class           (throwError)
 import qualified Data.HashSet                        as HS
 import qualified Data.List.NonEmpty                  as NE
 import           Data.Text                           (Text)
+import           SymHask.Printer
 import           SymHask.Symbolic
 import qualified SymHask.Symbolic.Basic.Substitution as Substitution
 import           SymHask.Symbolic.Simplification
 
+-- | Classification of a function as even, odd, or neither with
+-- respect to a variable.
 data FunctionParity
   = EvenFunc
   | OddFunc
   | NeitherFunc
   deriving (Eq, Show)
 
--- | Classification of a function as even, odd, or neither with
--- respect to a variable.
-
--- | A linear form represented as a*x + b
+-- | A linear form represented as \(ax + b\),
+-- where `coeffTerm` is \(a\) and `constTerm` is \(b\).
 data LinearForm
   = LinearForm
       { coeffTerm :: SimplifiedExpr
-        -- Coefficient of x
+        -- ^ Coefficient of x
       , constTerm :: SimplifiedExpr
-        -- Constant term
+        -- ^ Constant term
       }
   deriving (Eq, Show)
 
-treeSize :: SimplifiedExpr -> Int
+-- | Return the size of the expression tree, defined as the total number of nodes in the expression.
+-- The data constructor counts as 1, and the size of the children are added to it. For example:
+--
+-- >>> treeSize $ ("x"**2 + "y" :: UnsimplifiedExpr)
+-- 5
+-- Note that for the same mathematical expression, the simplified and unsimplified forms
+-- may have different tree sizes. For example:
+--
+-- >>> let unsimplified = "x" + "x" + "x" :: UnsimplifiedExpr
+-- >>> let simplified = simplify unsimplified
+-- >>> treeSize unsimplified
+-- >>> treeSize <$> simplified
+-- 5
+-- Right 3
+--
+-- This is a measure of the complexity of the expression
+-- and can be used to compare different expressions.
+treeSize :: Expr a -> Int
 treeSize = \case
   Number' _ -> 1
   Fraction' _ _ -> 3
@@ -75,6 +103,13 @@ treeSize = \case
   Factorial' expr -> 1 + treeSize expr
   Function' _ args -> 1 + sum (NE.map treeSize args)
 
+-- | Collect all subexpressions of a given expression, including the expression itself.
+--
+-- For example, for the expression "x"**2 + "y", the subexpressions would include:
+--
+-- >>> let expr = "x"**2 + "y" :: UnsimplifiedExpr
+-- >>> HS.map toHaskell <$> completeSubExprs <$> simplify expr
+-- Right (fromList ["x ^ 2 + y","y","x ^ 2","x","2"])
 completeSubExprs :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
 completeSubExprs expr
   | null (operands expr) = HS.singleton expr
@@ -82,29 +117,15 @@ completeSubExprs expr
  where
   subSets = map completeSubExprs $ operands expr
 
-{- | Trial substitutions: collect candidate subexpressions suitable for
-substitution. This returns a set containing:
- * function applications (Function' name args)
- * arguments of function applications
- * bases and exponents of power expressions
-The result is a HashSet of `SimplifiedExpr`.
--}
-trialSubstitutions :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
-trialSubstitutions expr = HS.foldl' collect HS.empty (completeSubExprs expr)
- where
-  collect acc e@(Function' _ args) =
-    let acc' = HS.insert e acc
-        argSet = HS.fromList (NE.toList args)
-     in HS.union acc' argSet
-  collect acc (Power' b ex) = HS.insert b $ HS.insert ex acc
-  collect acc _ = acc
 
-{- | Separate factors into parts free of variable x and parts dependent on x
-For expression u*v*w..., separates into (free_part, dependent_part) where:
-- free_part contains factors that don't depend on x
-- dependent_part contains factors that do depend on x
--}
-separateFactors :: SimplifiedExpr -> SimplifiedExpr -> EvalResult (SimplifiedExpr, SimplifiedExpr)
+
+-- | Separate factors into parts free of variable x and parts dependent on x
+-- For expression \(u\,v\,w\dots\), separates into (free_part, dependent_part) where:
+-- - free_part contains factors that don't depend on \(x\)
+-- - dependent_part contains factors that do depend on \(x\)
+type Dependent = SimplifiedExpr
+type Free = SimplifiedExpr
+separateFactors :: SimplifiedExpr -> SimplifiedExpr -> EvalResult (Free, Dependent)
 separateFactors (Product' factors) var =
   foldM processFactor (mkNumber 1, mkNumber 1) (NE.toList factors)
  where
@@ -124,7 +145,6 @@ separateFactors (Product' factors) var =
         -- dependent_part := f * dependent_part
         newDependent <- factor .*. currDep
         return (currFree, newDependent)
-
 -- Handle non-product expressions
 separateFactors expr var = do
   -- if freeOf(u, x) then (u, 1)
@@ -133,18 +153,22 @@ separateFactors expr var = do
     -- else (1, u)
     else return (mkNumber 1, expr)
 
+-- | Determine if a function is even, odd, or neither with respect to a variable.
+-- A function \(f(x)\) is even if \(f(-x) = f(x)\) for all \(x\), odd if \(f(-x) = -f(x)\) for all \(x\), and neither otherwise.
 evenOdd :: SimplifiedExpr -> Text -> EvalResult FunctionParity
 evenOdd expr x = do
   negX <- simplify (negate (mkSymbol x) :: UnsimplifiedExpr)
   substituted <-
     subs
-      (Substitution.Pattern (mkSymbol x), Substitution.Replacement negX)
+      ( Substitution.Pattern (mkSymbol x)
+      ,Substitution.Replacement negX )
       expr
   if
     | expr .-. substituted == pure (mkNumber 0) -> return EvenFunc
     | expr .+. substituted == pure (mkNumber 0) -> return OddFunc
     | otherwise                                 -> return NeitherFunc
 
+-- | Evaluate the absolute value of an expression, simplifying where possible.
 evalAbs :: SimplifiedExpr -> EvalResult SimplifiedExpr
 evalAbs (Number' n) = pure $ mkNumber (abs n)
 evalAbs (Fraction' n d) = simplify $ mkFraction (abs n) (abs d)
@@ -169,6 +193,7 @@ evalAbs expr = do
         else return $ Abs' expr
     Nothing -> return $ Abs' expr
 
+-- | Evaluate the maximum of a set of expressions, simplifying where possible.
 evalMax :: HS.HashSet SimplifiedExpr -> EvalResult SimplifiedExpr
 evalMax exprSet = case HS.toList exprSet of
   [] -> throwError $ UnsupportedOperation "evalMax: empty set"
@@ -231,15 +256,19 @@ evalMax exprSet = case HS.toList exprSet of
     -- If simplification fails or not a clear number, assume not definitely greater
     _                         -> False
 
+-- | Check if an expression is free of a variable,
+-- meaning it does not contain the variable as a `Symbol` and is not dependent on it.
 freeOf :: SimplifiedExpr -> SimplifiedExpr -> Bool
 freeOf expr var
   | expr == var = False
   | isAtomic expr = True
   | otherwise = all (`freeOf` var) (operands expr)
 
-setFreeOf :: SimplifiedExpr -> [SimplifiedExpr] -> Bool
+-- | Check if an expression is free of all variables in a set.
+setFreeOf :: Foldable t => SimplifiedExpr -> t SimplifiedExpr -> Bool
 setFreeOf expr = all (freeOf expr)
 
+-- | Extract the immediate operands of an expression.
 operands :: Expr a -> [Expr a]
 operands (Number' _)        = []
 operands (Fraction' _ _)    = []
@@ -253,6 +282,7 @@ operands (Factorial' x)     = [x]
 operands (UnaryDiff' x)     = [x]
 operands (BinaryDiff' x y)  = [x, y]
 
+-- | Extract the symbols present in an expression.
 symbols :: SimplifiedExpr -> HS.HashSet Text
 symbols expr = case expr of
   Number' _        -> HS.empty
@@ -267,6 +297,7 @@ symbols expr = case expr of
   Factorial' expr' -> symbols expr'
   Function' _ args -> HS.unions $ NE.toList $ NE.map symbols args
 
+-- | Extract the exponents of a variable in an expression.
 exponents :: SimplifiedExpr -> Text -> HS.HashSet SimplifiedExpr
 exponents (Number' _) _ = HS.empty
 exponents (Fraction' _ _) _ = HS.empty
@@ -291,6 +322,10 @@ exponents (Factorial' expr) x =
 exponents (Function' _ args) x =
   HS.unions $ NE.toList $ NE.map (`exponents` x) args
 
+-- | For a given expression and variable,
+-- determine if the expression can be expressed in the form \(a \cdot x + b\)
+-- where \(a\) and \(b\) are free of \(x\).
+-- If so, return @Just (LinearForm a b)@, otherwise return @Nothing@.
 linearForm :: SimplifiedExpr -> Text -> EvalResult (Maybe LinearForm)
 linearForm expr (mkSymbol -> x)
   | expr == x =
@@ -329,6 +364,15 @@ linearForm expr (mkSymbol -> x)
       UnsupportedOperation
         "linearForm: analyseSum called with non-sum expression"
 
+-- | Substitute all occurrences of a pattern with a replacement in an expression.
+--
+-- Notice that this is a structural substitution,
+-- meaning it will only replace an identical complete sub-expression.
+-- >>> let expr = 2 * "x" + "x" :: UnsimplifiedExpr
+-- >>> let pattern = Substitution.Pattern (mkSymbol "x")
+-- >>> let replacement = Substitution.Replacement (mkSymbol "y")
+-- >>> fmap toHaskell $ simplify expr >>= subs (pattern, replacement)
+-- Right "3 * y"
 subs ::
   (Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr) ->
   SimplifiedExpr ->
@@ -343,6 +387,10 @@ subs
         )
         expr
 
+-- | Sequentially apply a list of substitutions to an expression,
+-- where each substitution is applied to the result of the previous one.
+--
+-- This is useful when the substitutions may depend on each other or when order matters.
 seqSubs ::
   [(Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr)] ->
   SimplifiedExpr ->
@@ -352,6 +400,17 @@ seqSubs ((p, r) : rest) expr = do
   result <- subs (p, r) expr
   seqSubs rest result
 
+-- | Apply substitutions concurrently to an expression.
+--
+-- The algorithm recursively traverses the expression tree, applying all substitutions at each node before moving to its children.
+-- This means that if multiple substitutions match the same sub-expression, they will all be applied to
+-- that sub-expression before any further traversal.
+--
+-- This is different from sequential substitution,
+-- where substitutions are applied one after the other,
+-- and the result of one substitution can affect the applicability of subsequent substitutions.
+--
+-- This is useful when the substitutions are independent and can be applied in any order, or when you want to ensure that all applicable substitutions are applied simultaneously.
 concurSubs ::
   [(Substitution.Pattern SimplifiedExpr, Substitution.Replacement SimplifiedExpr)] ->
   SimplifiedExpr ->
@@ -366,9 +425,8 @@ concurSubs equations (unsimplify -> expr) = do
   let result = Substitution.concurSubs structuralEquations expr
   simplify result
 
-{- | Apply an effectful function to every immediate operand of an expression.
-This keeps the traversal logic in one place for compound expressions.
--}
+-- | Apply an effectful function to every immediate operand of an expression.
+--  This keeps the traversal logic in one place for compound expressions.
 mapOperands :: (SimplifiedExpr -> EvalResult SimplifiedExpr) -> SimplifiedExpr -> EvalResult SimplifiedExpr
 mapOperands f = \case
   Sum' terms -> do
@@ -380,37 +438,32 @@ mapOperands f = \case
   Quotient' n d -> do
     n' <- f n
     d' <- f d
-    if d' == mkNumber 0
-      then throwError DivisionByZero
-      else simplify $ mkQuotient n' d'
-  Power' b e -> do
-    b' <- f b
-    e' <- f e
-    simplify $ mkPower b' e'
+    when (d' == mkNumber 0) $ throwError DivisionByZero
+    simplify $ mkQuotient n' d'
+  Power' b e -> (mkPower <$> f b <*> f e) >>= simplify
   Function' fname args -> mkFunction fname <$> traverse f args
   Factorial' x -> (f x >>= simplify . mkFactorial)
   UnaryDiff' x -> (f x >>= simplify . mkUnaryDiff)
   BinaryDiff' x y -> (mkBinaryDiff <$> f x <*> f y) >>= simplify
   atom -> pure atom
 
+-- | Check if an expression is structurally zero (0 or 0/anything)
 isZero :: Expr a -> Bool
 isZero (Number' n)     = n == 0
 isZero (Fraction' n _) = n == 0
 isZero _               = False
 
-{- | Build a normalized "rest" expression for a sum given the tail operands.
-Returns 0 for an empty tail, the single element for a singleton tail,
-or the simplified sum for multiple elements.
--}
+-- | Build a normalized "rest" expression for a sum given the tail operands.
+-- Returns \(0\) for an empty tail, the single element for a singleton tail,
+-- or the simplified sum for multiple elements.
 buildRestSum :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
 buildRestSum []  = pure $ mkNumber 0
 buildRestSum [x] = pure x
 buildRestSum xs  = simplify $ mkSum (NE.fromList xs)
 
-{- | Build a normalized "rest" expression for a product given the tail operands.
-Returns 1 for an empty tail, the single element for a singleton tail,
-or the simplified product for multiple elements.
--}
+-- | Build a normalized "rest" expression for a product given the tail operands.
+-- Returns \(1\) for an empty tail, the single element for a singleton tail,
+-- or the simplified product for multiple elements.
 buildRestProduct :: [SimplifiedExpr] -> EvalResult SimplifiedExpr
 buildRestProduct []  = pure $ mkNumber 1
 buildRestProduct [x] = pure x

@@ -14,6 +14,8 @@ module SymHask.Symbolic.Calculus.Integration
       integrate
     , integrateLinear
     , integrateTable
+      -- * Substitution method
+    , trialSubstitutions
     ) where
 
 import           Control.Applicative                       ((<|>))
@@ -27,10 +29,10 @@ import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic                    (Pattern (..),
                                                             Replacement (..),
+                                                            completeSubExprs,
                                                             freeOf,
                                                             separateFactors,
-                                                            subs, treeSize,
-                                                            trialSubstitutions)
+                                                            subs, treeSize)
 import           SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
 import           SymHask.Symbolic.Polynomial               (algebraicExpand)
 import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
@@ -437,6 +439,23 @@ integrateSubstitution (mkSymbol -> xExpr) expr  = do
         inner <- integrate "v" uv
         eitherToMaybe $ subs (Pattern vSym, Replacement g) inner
       else Nothing
+
+{- | Trial substitutions: collect candidate subexpressions suitable for
+substitution. This returns a set containing:
+ * function applications (Function' name args)
+ * arguments of function applications
+ * bases and exponents of power expressions
+The result is a HashSet of `SimplifiedExpr`.
+-}
+trialSubstitutions :: SimplifiedExpr -> HS.HashSet SimplifiedExpr
+trialSubstitutions expr = HS.foldl' collect HS.empty (completeSubExprs expr)
+ where
+  collect acc e@(Function' _ args) =
+    let acc' = HS.insert e acc
+        argSet = HS.fromList (NE.toList args)
+     in HS.union acc' argSet
+  collect acc (Power' b ex) = HS.insert b $ HS.insert ex acc
+  collect acc _ = acc
 
 -- | Main integration function that tries the table, then linear properties, then substitution, and finally expansion
 -- Returns Just antiderivative if successful, Nothing otherwise
