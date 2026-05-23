@@ -1,22 +1,29 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE ViewPatterns #-}
 
+-- |
+-- Module: SymHask.Symbolic.Calculus.Integration
+-- Description: Symbolic integration of expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- Integration of symbolic expressions with respect to variables,
+-- including support for common functions and an integration table for pattern matching.
 module SymHask.Symbolic.Calculus.Integration
-    ( IntegrationVar
-    , integrate
+    ( -- * Algorithms
+      integrate
     , integrateLinear
     , integrateTable
-    , mkIntegrationVar
     ) where
 
 import           Control.Applicative                       ((<|>))
-import           Control.Monad.Error.Class                 (MonadError (throwError))
 import           Data.Either.Extra                         (eitherToMaybe)
 import qualified Data.HashSet                              as HS
 import           Data.List                                 (find, sortOn)
 import           Data.List.NonEmpty                        (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                        as NE
 import           Data.Text                                 (Text)
+import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic                    (Pattern (..),
                                                             Replacement (..),
@@ -28,26 +35,20 @@ import           SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
 import           SymHask.Symbolic.Polynomial               (algebraicExpand)
 import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
                                                             (./.))
-
 -- ============================================================================
 
 -- * Data Types
 
 -- ============================================================================
 
--- | Integration variable, similar to DiffVar
-newtype IntegrationVar
-  = IntSymbol Text
-  deriving (Eq, Show)
-
 -- | Rule in the integration table
 data IntegrationRule
   = IntegrationRule
-      { ruleName :: Text
+      { ruleName           :: Text
         -- Description of the rule
-      , ruleMatcher :: SimplifiedExpr -> IntegrationVar -> Bool
+      , ruleMatcher        :: Text -> SimplifiedExpr -> Bool
         -- Does this rule match?
-      , ruleAntiderivative :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
+      , ruleAntiderivative :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
         -- Apply the rule to get antiderivative (or Nothing if application fails)
       }
 
@@ -57,30 +58,13 @@ data IntegrationRule
 
 -- ============================================================================
 
--- | Convert an integration variable back to an expression
-integrationVarToExpr :: IntegrationVar -> Expr a
-integrationVarToExpr (IntSymbol s) = mkSymbol s
-
--- integrationVarToExpr (IntFunction fname args) =
---   let args' = NE.fromList $ map mkSymbol (NE.toList args)
---   in mkFunction fname args'
-
--- | Create an integration variable from an expression
-mkIntegrationVar :: Expr s -> EvalResult IntegrationVar
-mkIntegrationVar (Symbol' s) = pure $ IntSymbol s
--- mkIntegrationVar (Function' fname args) =
---   let argNames = [ s | Symbol' s <- NE.toList args ]
---   in pure $ IntFunction fname (NE.fromList argNames)
-mkIntegrationVar _ =
-  throwError $
-    UnsupportedOperation "Cannot create IntegrationVar from this expression type"
 
 -- | Check if an expression is free of the integration variable
-isFreeOf :: SimplifiedExpr -> IntegrationVar -> Bool
-isFreeOf expr (IntSymbol s) = freeOf expr (mkSymbol s)
+isFreeOf :: Text -> SimplifiedExpr -> Bool
+isFreeOf s expr = freeOf expr (mkSymbol s)
 
--- isFreeOf expr (IntFunction fname args) =
---   let funcExpr = integrationVarToExpr (IntFunction fname args)
+-- isFreeOf (IntFunction fname args) expr =
+--   let funcExpr = TextToExpr (IntFunction fname args)
 --   in freeOf expr funcExpr
 
 -- ============================================================================
@@ -92,35 +76,32 @@ isFreeOf expr (IntSymbol s) = freeOf expr (mkSymbol s)
 {- | Category 1: Constants (free of integration variable)
 ∫ c dx = c*x
 -}
-matchConstant :: SimplifiedExpr -> IntegrationVar -> Bool
+matchConstant :: Text -> SimplifiedExpr -> Bool
 matchConstant = isFreeOf
 
 -- This computes:
-integrateConstant :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateConstant c (IntSymbol x) = eitherToMaybe (c .*. mkSymbol x)
+integrateConstant :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateConstant x c = eitherToMaybe (c .*. mkSymbol x)
 
--- integrateConstant c (IntFunction fname args) =
---   let var = integrationVarToExpr (IntFunction fname args)
+-- integrateConstant (IntFunction fname args) c =
+--   let var = TextToExpr (IntFunction fname args)
 --   in Just $ c .*. var
 
 {- | Category 2a: Power rule for x^n where n != -1
 ∫ x^n dx = x^(n+1) / (n+1) where n is free of x
 -}
-matchPowerGeneral :: SimplifiedExpr -> IntegrationVar -> Bool
-matchPowerGeneral expr var = case expr of
+matchPowerGeneral :: Text -> SimplifiedExpr -> Bool
+matchPowerGeneral var expr = case expr of
   -- handle implicit exponent 1: Symbol 'x' treated as x^1
-  Symbol' s | s == getVarName var -> True
-  Power' (Symbol' s) n | s == getVarName var && n `isFreeOf` var && isNotMinusOne n -> True
-  _ -> False
+  Symbol' s | s ==  var                                                 -> True
+  Power' (Symbol' s) n | s ==  var && isFreeOf var n && isNotMinusOne n -> True
+  _                                                                     -> False
  where
   isNotMinusOne (Number' (-1)) = False
   isNotMinusOne _              = True
-  getVarName (IntSymbol s) = s
 
--- getVarName (IntFunction fname _) = fname
-
-integratePowerGeneral :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integratePowerGeneral expr _ = case expr of
+integratePowerGeneral :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integratePowerGeneral _ expr = case expr of
   -- Symbol x -> treat as x^1
   Symbol' s ->
     let x = mkSymbol s :: UnsimplifiedExpr
@@ -138,53 +119,41 @@ integratePowerGeneral expr _ = case expr of
 {- | Category 2b: Logarithm for x^(-1)
 ∫ x^(-1) dx = ln(x)
 -}
-matchPowerLog :: SimplifiedExpr -> IntegrationVar -> Bool
-matchPowerLog expr var = case expr of
-  Power' (Symbol' s) (Number' (-1)) | s == getVarName var -> True
-  Quotient' (Number' 1) (Symbol' s) | s == getVarName var -> True
-  _                                                       -> False
- where
-  getVarName (IntSymbol s) = s
+matchPowerLog ::  Text -> SimplifiedExpr  -> Bool
+matchPowerLog var expr = case expr of
+  Power' (Symbol' s) (Number' (-1)) | s ==  var -> True
+  Quotient' (Number' 1) (Symbol' s) | s ==  var -> True
+  _                                             -> False
 
--- getVarName (IntFunction fname _) = fname
+integratePowerLog :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integratePowerLog x _ = Just $ mkFunction "log" (mkSymbol x :| [])
 
-integratePowerLog :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integratePowerLog _ (IntSymbol x) = Just $ mkFunction "log" (mkSymbol x :| [])
-
--- integratePowerLog _ (IntFunction fname args) =
---   let funcExpr = integrationVarToExpr (IntFunction fname args)
+-- integratePowerLog (IntFunction fname args) _ =
+--   let funcExpr = TextToExpr (IntFunction fname args)
 --   in Just $ mkFunction "log" (funcExpr :| [])
 
 {- | Category 3a: Exponential e^x
 ∫ e^x dx = e^x
 -}
-matchExpX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchExpX expr var = case expr of
-  Exp' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchExpX :: Text ->SimplifiedExpr -> Bool
+matchExpX var expr  = case expr of
+  Exp' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateExpX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateExpX (Exp' x) _ = Just $ mkFunction "exp" (x :| [])
+integrateExpX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateExpX _ (Exp' x) = Just $ mkFunction "exp" (x :| [])
 integrateExpX _ _        = Nothing
 
 {- | Category 3b: Natural logarithm ln(x)
 ∫ ln(x) dx = x*ln(x) - x
 -}
-matchLogX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchLogX expr var = case expr of
-  Log' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchLogX :: Text -> SimplifiedExpr -> Bool
+matchLogX var expr = case expr of
+  Log' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateLogX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateLogX _ (IntSymbol x) =
+integrateLogX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateLogX x _ =
   let xSym = mkSymbol x :: UnsimplifiedExpr
       res = simplify $ (xSym * mkFunction "log" (xSym :| [])) - xSym
    in eitherToMaybe res
@@ -192,99 +161,76 @@ integrateLogX _ (IntSymbol x) =
 {- | Category 3c: General exponential b^x where b is free of x
 ∫ b^x dx = b^x / ln(b)
 -}
-matchExpBX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchExpBX expr var = case expr of
-  Power' b (Symbol' s) | isFreeOf b var && s == getVarName var -> True
-  _                                                            -> False
- where
-  getVarName (IntSymbol s) = s
+matchExpBX :: Text -> SimplifiedExpr -> Bool
+matchExpBX var expr = case expr of
+  Power' b (Symbol' s) | isFreeOf var b  && s ==  var -> True
+  _                                                   -> False
 
--- getVarName (IntFunction fname _) = fname
 
-integrateExpBX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateExpBX (Power' (unsimplify -> b) (unsimplify -> x)) _ =
+integrateExpBX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateExpBX _ (Power' (unsimplify -> b) (unsimplify -> x)) =
   eitherToMaybe $ simplify $ (b ** x) / mkFunction "log" (b :| [])
 integrateExpBX _ _ = Nothing
 
 {- | Category 4a: sin(x)
 ∫ sin(x) dx = -cos(x)
 -}
-matchSinX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchSinX expr var = case expr of
-  Sin' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchSinX :: Text -> SimplifiedExpr -> Bool
+matchSinX var expr = case expr of
+  Sin' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateSinX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSinX (Sin' x) _ = eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "cos" (x :| []))
+integrateSinX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateSinX _ (Sin' x) = eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "cos" (x :| []))
 integrateSinX _ _ = Nothing
 
 {- | Category 4b: cos(x)
 ∫ cos(x) dx = sin(x)
 -}
-matchCosX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchCosX expr var = case expr of
-  Cos' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchCosX :: Text -> SimplifiedExpr -> Bool
+matchCosX var expr = case expr of
+  Cos' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateCosX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateCosX (Cos' x) _ = Just $ mkFunction "sin" (x :| [])
+integrateCosX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateCosX _ (Cos' x) = Just $ mkFunction "sin" (x :| [])
 integrateCosX _ _        = Nothing
 
 {- | Category 4c: tan(x)
 ∫ tan(x) dx = -ln(cos(x)) or ln(|sec(x)|), use -ln(cos(x))
 -}
-matchTanX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchTanX expr var = case expr of
-  Tan' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchTanX :: Text -> SimplifiedExpr -> Bool
+matchTanX var expr = case expr of
+  Tan' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateTanX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateTanX (Tan' x) _ =
+integrateTanX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateTanX _ (Tan' x) =
   eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "log" (mkFunction "cos" (x :| []) :| []))
 integrateTanX _ _ = Nothing
 
 {- | Category 4d: cot(x)
 ∫ cot(x) dx = ln(sin(x))
 -}
-matchCotX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchCotX expr var = case expr of
-  Cot' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchCotX :: Text -> SimplifiedExpr -> Bool
+matchCotX var expr = case expr of
+  Cot' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateCotX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateCotX (Cot' x) _ = Just $ mkFunction "log" (mkFunction "sin" (x :| []) :| [])
+integrateCotX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateCotX _ (Cot' x) = Just $ mkFunction "log" (mkFunction "sin" (x :| []) :| [])
 integrateCotX _ _ = Nothing
 
 {- | Category 4e: sec(x)
 ∫ sec(x) dx = ln(sec(x) + tan(x))
 -}
-matchSecX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchSecX expr var = case expr of
-  Sec' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchSecX :: Text -> SimplifiedExpr -> Bool
+matchSecX var expr = case expr of
+  Sec' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateSecX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSecX (Sec' (unsimplify -> x)) _ =
+integrateSecX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateSecX _ (Sec' (unsimplify -> x)) =
   let secX = mkFunction "sec" (x :| [])
       tanX = mkFunction "tan" (x :| [])
    in eitherToMaybe $ simplify $ mkFunction "log" ((secX + tanX) :| [])
@@ -293,17 +239,13 @@ integrateSecX _ _ = Nothing
 {- | Category 4f: csc(x)
 ∫ csc(x) dx = -ln(csc(x) + cot(x))
 -}
-matchCscX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchCscX expr var = case expr of
-  Csc' (Symbol' s) | s == getVarName var -> True
-  _                                      -> False
- where
-  getVarName (IntSymbol s) = s
+matchCscX :: Text -> SimplifiedExpr -> Bool
+matchCscX var expr = case expr of
+  Csc' (Symbol' s) | s ==  var -> True
+  _                            -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateCscX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateCscX (Csc' (unsimplify -> x)) _ =
+integrateCscX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateCscX _ (Csc' (unsimplify -> x)) =
   let cscX = mkFunction "csc" (x :| [])
       cotX = mkFunction "cot" (x :| [])
    in eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "log" ((cscX + cotX) :| []))
@@ -312,33 +254,25 @@ integrateCscX _ _ = Nothing
 {- | Category 4g: sec^2(x)
 ∫ sec^2(x) dx = tan(x)
 -}
-matchSec2X :: SimplifiedExpr -> IntegrationVar -> Bool
-matchSec2X expr var = case expr of
-  Power' (Sec' (Symbol' s)) (Number' 2) | s == getVarName var -> True
-  _                                                           -> False
- where
-  getVarName (IntSymbol s) = s
+matchSec2X :: Text -> SimplifiedExpr -> Bool
+matchSec2X var expr = case expr of
+  Power' (Sec' (Symbol' s)) (Number' 2) | s ==  var -> True
+  _                                                 -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateSec2X :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSec2X (Power' (Sec' x) _) _ = eitherToMaybe $ simplify $ mkFunction "tan" (x :| [])
+integrateSec2X :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateSec2X _ (Power' (Sec' x) _) = eitherToMaybe $ simplify $ mkFunction "tan" (x :| [])
 integrateSec2X _ _ = Nothing
 
 {- | Category 4h: csc^2(x)
 ∫ csc^2(x) dx = -cot(x)
 -}
-matchCsc2X :: SimplifiedExpr -> IntegrationVar -> Bool
-matchCsc2X expr var = case expr of
-  Power' (Csc' (Symbol' s)) (Number' 2) | s == getVarName var -> True
-  _                                                           -> False
- where
-  getVarName (IntSymbol s) = s
+matchCsc2X :: Text -> SimplifiedExpr -> Bool
+matchCsc2X var expr = case expr of
+  Power' (Csc' (Symbol' s)) (Number' 2) | s ==  var -> True
+  _                                                 -> False
 
--- getVarName (IntFunction fname _) = fname
-
-integrateCsc2X :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateCsc2X (Power' (Csc' x) _) _ = eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "cot" (x :| []))
+integrateCsc2X :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateCsc2X _ (Power' (Csc' x) _) = eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "cot" (x :| []))
 integrateCsc2X _ _ = Nothing
 
 -- | Category 5: Special forms from derivatives of trig/inverse trig functions
@@ -346,49 +280,39 @@ integrateCsc2X _ _ = Nothing
 {- | Category 5a: sec(x)*tan(x)
 ∫ sec(x)*tan(x) dx = sec(x)
 -}
-matchSecTanX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchSecTanX expr var = case expr of
+matchSecTanX :: Text -> SimplifiedExpr -> Bool
+matchSecTanX var expr = case expr of
   Product' factors | check factors -> True
   _                                -> False
  where
   check = liftA2 (&&) hasSecX hasTanX
-  hasSecX = any (\case Sec' (Symbol' s) | s == getVarName var -> True; _ -> False)
-  hasTanX = any (\case Tan' (Symbol' s) | s == getVarName var -> True; _ -> False)
-  getVarName (IntSymbol s) = s
+  hasSecX = any (\case Sec' (Symbol' s) | s ==  var -> True; _ -> False)
+  hasTanX = any (\case Tan' (Symbol' s) | s ==  var -> True; _ -> False)
 
--- getVarName (IntFunction fname _) = fname
 
-integrateSecTanX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSecTanX (Product' factors) var = do
-  let secFactor = find (\case Sec' (Symbol' s) | s == getVarName var -> True; _ -> False) factors
+integrateSecTanX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateSecTanX var (Product' factors) = do
+  let secFactor = find (\case Sec' (Symbol' s) | s == var -> True; _ -> False) factors
   secFactor >>= \(Sec' x) -> Just $ mkFunction "sec" (x :| [])
- where
-  getVarName (IntSymbol s) = s
--- getVarName (IntFunction fname _) = fname
 integrateSecTanX _ _ = Nothing
 
 {- | Category 5b: csc(x)*cot(x)
 ∫ csc(x)*cot(x) dx = -csc(x)
 -}
-matchCscCotX :: SimplifiedExpr -> IntegrationVar -> Bool
-matchCscCotX expr var = case expr of
+matchCscCotX :: Text -> SimplifiedExpr -> Bool
+matchCscCotX var expr = case expr of
   Product' factors | check factors -> True
   _                                -> False
  where
   check = liftA2 (&&) hasCscX hasCotX
-  hasCscX = any (\case Csc' (Symbol' s) | s == getVarName var -> True; _ -> False)
-  hasCotX = any (\case Cot' (Symbol' s) | s == getVarName var -> True; _ -> False)
-  getVarName (IntSymbol s) = s
+  hasCscX = any (\case Csc' (Symbol' s) | s == var -> True; _ -> False)
+  hasCotX = any (\case Cot' (Symbol' s) | s == var -> True; _ -> False)
 
--- getVarName (IntFunction fname _) = fname
 
-integrateCscCotX :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateCscCotX (Product' factors) var = do
-  let cscFactor = find (\case Csc' (Symbol' s) | s == getVarName var -> True; _ -> False) factors
+integrateCscCotX :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateCscCotX var (Product' factors) = do
+  let cscFactor = find (\case Csc' (Symbol' s) | s ==  var -> True; _ -> False) factors
   cscFactor >>= \(Csc' x) -> eitherToMaybe $ simplify $ mkUnaryDiff (mkFunction "csc" (x :| []))
- where
-  getVarName (IntSymbol s) = s
--- getVarName (IntFunction fname _) = fname
 integrateCscCotX _ _ = Nothing
 
 -- ============================================================================
@@ -435,42 +359,46 @@ integrationTable =
 
 -- ============================================================================
 
-{- | Attempt to integrate an expression using the integration table
-Returns Just antiderivative if a rule matches, Nothing otherwise
-Does not include the constant of integration
--}
-integrateTable :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateTable expr var = go integrationTable
+-- | Attempt to integrate an expression using the integration table
+-- Returns Just antiderivative if a rule matches, Nothing otherwise
+-- Does not include the constant of integration
+--
+-- Notice that this function only applies the first matching rule from the table and
+-- does not attempt to apply multiple rules or combine results.
+integrateTable :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateTable var expr = go integrationTable
  where
   go [] = Nothing
   go (rule : rest) =
-    if ruleMatcher rule expr var
+    if ruleMatcher rule var expr
       -- If the rule matches, attempt to apply it. If application fails (returns Nothing), continue to next rule
-      then ruleAntiderivative rule expr var <|> go rest
+      then ruleAntiderivative rule var expr <|> go rest
       else go rest
 
-{- | Linear properties of the integral
-Attempt to apply linearity rules to `expr` with respect to `var`.
-Returns `Just antiderivative` when successful, `Nothing` when this
-linear-property procedure cannot be applied.
--}
-integrateLinear :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateLinear expr var = case expr of
+-- | Linear properties of the integral
+-- Attempt to apply linearity rules to `expr` with respect to `var`.
+-- Returns `Just antiderivative` when successful, `Nothing` when this
+-- linear-property procedure cannot be applied.
+--
+-- Notice that thie function only applies linearity properties and does not attempt to integrate the resulting parts.
+-- It is meant to be used as a step in the overall `integrate` function, which will recursively call `integrate` on the resulting parts.
+integrateLinear :: Text -> SimplifiedExpr -> Maybe SimplifiedExpr
+integrateLinear var expr = case expr of
   -- Product: separate factors free of the integration variable
   Product' _ ->
-    case eitherToMaybe (separateFactors expr (integrationVarToExpr var)) of
+    case eitherToMaybe (separateFactors expr (mkSymbol var)) of
       Just (freePart, depPart) ->
         -- If none of the operands is free of x, this property doesn't help
         if freePart == mkNumber 1
           then Nothing
-          else case integrate depPart var of
+          else case integrate var depPart  of
             Just innerAnti -> eitherToMaybe (freePart .*. innerAnti)
             Nothing        -> Nothing
       Nothing -> Nothing
   -- Sum: integrate each term; if any fails, the whole sum fails
   Sum' terms ->
     let termList = NE.toList terms
-        integrated = traverse (`integrate` var) termList
+        integrated = traverse (integrate var) termList
      in case integrated of
           Just ints -> eitherToMaybe $ simplify $ mkSum (NE.fromList ints)
           Nothing   -> Nothing
@@ -481,8 +409,8 @@ integrateLinear expr var = case expr of
 Tries candidates from `trialSubstitutions` and checks whether
 f / d(v(x))/dx can be rewritten as u(v) that is free of x.
 -}
-integrateSubstitution :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrateSubstitution expr (integrationVarToExpr -> xExpr) = do
+integrateSubstitution :: Text ->SimplifiedExpr -> Maybe SimplifiedExpr
+integrateSubstitution (mkSymbol -> xExpr) expr  = do
   dVar <- eitherToMaybe $ mkDiffVar xExpr
   let candidates = sortOn (negate . treeSize) $ filter eligible $ HS.toList $ trialSubstitutions expr
   tryCandidates dVar candidates
@@ -506,19 +434,35 @@ integrateSubstitution expr (integrationVarToExpr -> xExpr) = do
     uv <- eitherToMaybe $ subs (Pattern g, Replacement vSym) quotient
     if freeOf uv xExpr
       then do
-        inner <- integrate uv (IntSymbol "v")
+        inner <- integrate "v" uv
         eitherToMaybe $ subs (Pattern vSym, Replacement g) inner
       else Nothing
 
-integrate :: SimplifiedExpr -> IntegrationVar -> Maybe SimplifiedExpr
-integrate expr var =
-  integrateTable expr var
-    <|> integrateLinear expr var
-    <|> integrateSubstitution expr var
-    -- algebraic expand, if it changes the expression, try again with the expanded form
-    <|> ( eitherToMaybe (algebraicExpand expr)
-            >>= \expanded ->
-              if expanded /= expr
-                then integrate expanded var
-                else Nothing
-        )
+-- | Main integration function that tries the table, then linear properties, then substitution, and finally expansion
+-- Returns Just antiderivative if successful, Nothing otherwise
+--
+-- Notice that the capability of this function is limited by the patterns in the integration table and the linear/substitution methods implemented.
+-- More complex expressions may require additional rules or methods to be added.
+--
+-- >>> let expr = 2 * "x" ** 3 + 4 * "x" + 5 - tan "x" :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ eitherToMaybe (simplify expr) >>= integrate "x"
+-- Just "log (cos x) + 5 * x + 2 * x ^ 2 + 1 / 2 * x ^ 4"
+--
+-- >>> let expr = (cos "x" ** 2) * sin "x" :: UnsimplifiedExpr
+-- >>> fmap toHaskell $ eitherToMaybe (simplify expr) >>= integrate "x"
+-- Just "(-1) / 3 * (cos x) ^ 3"
+integrate :: Text -> SimplifiedExpr  -> Maybe SimplifiedExpr
+integrate var expr =
+  integrateTable var expr
+    <|> integrateLinear var expr
+    <|> integrateSubstitution var expr
+    -- algebraic expand, if it changes the expression,
+    -- try again with the expanded form
+    <|> integrateWithExpansion var expr
+  where
+    integrateWithExpansion v u =
+      eitherToMaybe (algebraicExpand u)
+        >>= \expanded ->
+          if expanded /= u
+            then integrate v expanded
+            else Nothing

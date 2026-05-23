@@ -1,10 +1,13 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf            #-}
-{-# LANGUAGE OverloadedLists       #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE MultiWayIf      #-}
+{-# LANGUAGE OverloadedLists #-}
 
+-- |
+-- Module: SymHask.Symbolic.Simplification.RationalNumber
+-- Description: Simplification of rational number expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
 module SymHask.Symbolic.Simplification.RationalNumber
     ( simplifyRNE
     , toStandardRNE
@@ -15,9 +18,13 @@ import           Control.Monad.Error.Class (throwError)
 import           Data.Coerce               (coerce)
 import           SymHask.Symbolic
 
+-- | Simplify rational number expressions by performing arithmetic operations and reducing to lowest terms.
 simplifyRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 simplifyRNE = simplifyRNEStep >=> toStandardRNE
 
+-- | This function converts a simplified rational number expression into a standard form
+-- where the numerator and denominator are coprime, and the denominator is positive.
+-- It also handles cases where the numerator is zero or when the denominator is zero (which results in an error).
 toStandardRNE :: UnsimplifiedExpr -> EvalResult UnsimplifiedExpr
 toStandardRNE = \case
   Number' n -> pure $ mkNumber n

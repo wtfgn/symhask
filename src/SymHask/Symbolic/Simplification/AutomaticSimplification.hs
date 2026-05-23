@@ -1,11 +1,12 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf            #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE MultiWayIf #-}
 
+-- |
+-- Module: SymHask.Symbolic.Simplification.AutomaticSimplification
+-- Description: Internal module for automatic simplification of symbolic expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
 module SymHask.Symbolic.Simplification.AutomaticSimplification
     ( automaticSimplify
     ) where
@@ -15,6 +16,7 @@ import           Data.Either                                    (fromRight)
 import           Data.List.NonEmpty                             (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                             as NE
 import           Data.Text                                      (Text)
+import           Math.Combinatorics.Exact.Factorial             (factorial)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
                                                                  toStandardRNE)
@@ -24,6 +26,13 @@ import           SymHask.Symbolic.Simplification.RationalNumber (simplifyRNE,
 -- * Main Simplification Function
 
 -- ============================================================================
+-- | Internal function that performs automatic simplification
+--
+-- Most operators required the input to be in simplified form,
+-- as they rely on the properties of simplified expressions.
+--
+-- Note: This function is not intended to be used directly by users.
+-- Instead, it is called by the `simplify` method of the `Simplify` type class.
 automaticSimplify :: Expr a -> EvalResult UnsimplifiedExpr
 automaticSimplify = \case
   -- Integers and Symbols are already simplified
@@ -302,11 +311,8 @@ simplifyFactorial (Factorial' u) = do
     Number' n
       | n < 0 -> throwError $ InvalidDomain "Factorial of a negative number is undefined"
       | n == 0 -> return $ mkNumber 1
-      | otherwise -> return $ mkNumber $ factorial n
+      | otherwise -> return $ mkNumber $ factorial $ fromIntegral n
     _ -> return $ mkFactorial u'
- where
-  factorial 0 = 1
-  factorial m = m * factorial (m - 1)
 simplifyFactorial _ = throwError $ UnsupportedOperation "Expected a Factorial expression"
 
 -- ============================================================================

@@ -1,19 +1,29 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE ViewPatterns #-}
 
+-- |
+-- Module: SymHask.Symbolic.Calculus.Differentiation
+-- Description: Symbolic differentiation of expressions
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- Differentiation of symbolic expressions with respect to variables
+-- , including support for standard functions and a generalized chain rule for undefined functions.
 module SymHask.Symbolic.Calculus.Differentiation
-    ( DiffVar
-    , diff
+    ( -- * Data Types
+      DiffVar
+      -- * Helpers
     , mkDiffVar
+      -- * Algorithms
+    , diff
     ) where
 
-import           Control.Monad.Error.Class       (MonadError (throwError))
-import           Data.List.NonEmpty              (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty              as NE
-import           Data.Text                       (Text)
+import           Control.Monad.Error.Class (MonadError (throwError))
+import           Data.List.NonEmpty        (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty        as NE
+import           Data.Text                 (Text)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic          (freeOf)
-import           SymHask.Symbolic.Simplification ()
+import           SymHask.Symbolic.Basic    (freeOf)
 
 -- ============================================================================
 
@@ -21,13 +31,13 @@ import           SymHask.Symbolic.Simplification ()
 
 -- ============================================================================
 
+-- | Data type representing a variable with respect to which differentiation is performed.
+--
+-- This can be either a simple variable symbol (e.g., \(x\)) or an undefined function (e.g., \(f(x)\)).
 data DiffVar
-  = DiffSymbol Text -- Variable symbol
-  | DiffFunction Text (NE.NonEmpty Text) -- Undefined functions
+  = DiffSymbol Text -- ^ Variable symbol
+  | DiffFunction Text (NE.NonEmpty Text) --  ^ Undefined functions
   deriving (Eq, Show)
-
--- pattern Diff' :: SimplifiedExpr -> SimplifiedExpr -> SimplifiedExpr
--- pattern Diff' expr x <- Function' "diff" (expr :| [x])
 
 -- ============================================================================
 
@@ -44,6 +54,7 @@ diffVarToExpr (DiffFunction fname args) =
 mkDiffExpr :: Expr a -> DiffVar -> Expr a
 mkDiffExpr expr (diffVarToExpr -> var) = mkFunction "diff" (expr :| [var])
 
+-- | Convert an expression to a `DiffVar` for use in the low-level differentiation API.
 mkDiffVar :: Expr s -> EvalResult DiffVar
 mkDiffVar (Symbol' s) = pure $ DiffSymbol s
 mkDiffVar (Function' fname args) =
@@ -59,6 +70,12 @@ mkDiffVar _ =
 
 -- ============================================================================
 
+-- | Differentiate an unsimplified expression with respect to a `DiffVar`.
+--
+-- This function implements the standard differentiation rules for sums, products, powers, and common functions.
+-- For undefined functions, it applies a generalized chain rule.
+--
+-- Normally, users should call `diff` from `SymHask.Symbolic.Calculus`.
 diff :: UnsimplifiedExpr -> DiffVar -> EvalResult UnsimplifiedExpr
 diff expr dVar@(unsimplify . diffVarToExpr -> var) = case expr of
   _ | expr == var -> pure $ mkNumber 1
