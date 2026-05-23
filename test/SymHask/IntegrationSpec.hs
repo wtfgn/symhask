@@ -4,7 +4,7 @@ module SymHask.IntegrationSpec
     ( tests
     ) where
 
-import           Data.List.NonEmpty                    (NonEmpty ((:|)))
+import qualified Data.HashSet                          as HS
 import           SymHask.Symbolic                      (UnsimplifiedExpr,
                                                         mkSymbol)
 import           SymHask.Symbolic.Calculus.Integration (integrate,
@@ -12,10 +12,8 @@ import           SymHask.Symbolic.Calculus.Integration (integrate,
                                                         integrateTable,
                                                         trialSubstitutions)
 import           Test.Tasty                            (TestTree, testGroup)
-import           Test.Tasty.HUnit                      (assertFailure, testCase,
-                                                        (@?=))
+import           Test.Tasty.HUnit                      (testCase, (@?=))
 import           TestUtils                             (simplifyOrFail)
-import qualified Data.HashSet                           as HS
 
 tests :: TestTree
 tests =

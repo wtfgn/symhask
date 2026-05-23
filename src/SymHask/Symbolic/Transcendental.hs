@@ -27,7 +27,6 @@ import           Control.Monad.Error.Class         (throwError)
 import           Data.List.NonEmpty                (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                as NE
 import           Math.Combinatorics.Exact.Binomial (choose)
-import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic            (buildRestProduct,
                                                     buildRestSum, isZero,

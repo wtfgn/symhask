@@ -1,4 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 -- |
 -- Module: SymHask.Symbolic.Calculus.Integration
@@ -25,7 +27,6 @@ import           Data.List                                 (find, sortOn)
 import           Data.List.NonEmpty                        (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                        as NE
 import           Data.Text                                 (Text)
-import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic                    (Pattern (..),
                                                             Replacement (..),
