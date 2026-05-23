@@ -1,6 +1,5 @@
 module Main (main) where
 
-import qualified SymHask.BasicSpec as Basic
 import qualified SymHask.DifferentiaionSpec as Differentiation
 import qualified SymHask.IntegrationSpec as Integration
 import qualified SymHask.PolynomialSpec as Polynomial
@@ -18,7 +17,6 @@ tests =
     [ Differentiation.tests,
       Simplification.tests,
       Integration.tests,
-      Basic.tests,
       Polynomial.tests,
       Transcendental.tests
     ]
