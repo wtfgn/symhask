@@ -353,20 +353,20 @@ publicApiTests =
     "Public API"
     [ testCase "diff simplifies a sum" $ do
         let Right xVar = Calc.mkDiffVar mkSX
-        Calc.diff (mkSX :+: mkSY) xVar @?= Right (mkNumber 1)
+        Calc.diff xVar (mkSX :+: mkSY) @?= Right (mkNumber 1)
     , testCase "diff simplifies a product" $ do
         let Right xVar = Calc.mkDiffVar mkSX
-        Calc.diff (mkSX :*: mkSY) xVar @?= Right mkSY
+        Calc.diff xVar (mkSX :*: mkSY) @?= Right mkSY
     , testCase "diff of sin is cos" $ do
         let Right xVar = Calc.mkDiffVar mkSX
-        Calc.diff (Sin' mkSX) xVar @?= Right (Cos' mkSX)
+        Calc.diff xVar (Sin' mkSX) @?= Right (Cos' mkSX)
     , testCase "diff of exp is exp" $ do
         let Right xVar = Calc.mkDiffVar mkSX
-        Calc.diff (Exp' mkSX) xVar @?= Right (Exp' mkSX)
+        Calc.diff xVar (Exp' mkSX) @?= Right (Exp' mkSX)
     , testCase "multiDiff applies repeated differentiation" $ do
         let Right xVar = Calc.mkDiffVar mkSX
         let Right yVar = Calc.mkDiffVar mkSY
-        Calc.multiDiff mkSX [xVar, yVar] @?= Right (mkNumber 0)
+        Calc.multiDiff [xVar, yVar] mkSX @?= Right (mkNumber 0)
     ]
 
 -- ============================================================================

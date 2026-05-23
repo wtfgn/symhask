@@ -9,8 +9,7 @@ import           SymHask.Symbolic                      (UnsimplifiedExpr,
                                                         mkSymbol)
 import           SymHask.Symbolic.Calculus.Integration (integrate,
                                                         integrateLinear,
-                                                        integrateTable,
-                                                        mkIntegrationVar)
+                                                        integrateTable)
 import           Test.Tasty                            (TestTree, testGroup)
 import           Test.Tasty.HUnit                      (assertFailure, testCase,
                                                         (@?=))
@@ -37,8 +36,7 @@ integrationTableTests :: TestTree =
     "Integration Table"
     [ -- Category 1: Constants (free of integration variable)
       let x = mkSymbol "x" :: UnsimplifiedExpr
-          mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          runTable e = integrateTable (mkI x) (simplifyOrFail e)
+          runTable e = integrateTable "x" (simplifyOrFail e)
        in testGroup
             "table"
             [ testCase "Constant: ∫ 5 dx = 5x" $ runTable (5 :: UnsimplifiedExpr) @?= Just (simplifyOrFail (5 * x))
@@ -62,8 +60,7 @@ linearPropertiesTests =
   testGroup
     "Linear Properties"
     [ let x = mkSymbol "x" :: UnsimplifiedExpr
-          mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          runLinear e = integrateLinear (mkI x) (simplifyOrFail e)
+          runLinear e = integrateLinear "x" (simplifyOrFail e)
        in testGroup
             "linear"
             [ testCase "Product constant: ∫ 5*x^2 = 5*(x^3/3)" $ runLinear (5 * (x ** 2)) @?= Just (simplifyOrFail (5 * ((x ** 3) / 3)))
@@ -85,8 +82,7 @@ integrateTests =
   testGroup
     "Integration"
     [ let x = mkSymbol "x" :: UnsimplifiedExpr
-          mkI = either (\_ -> error "mkIntegrationVar failed") id . mkIntegrationVar
-          runIntegrate e = integrate (mkI x) (simplifyOrFail e)
+          runIntegrate e = integrate "x" (simplifyOrFail e)
        in testGroup
             "integrate"
             [ testCase "∫ (x+1)*ln(cos((x+1)^2))*sin((x+1)^2)/cos((x+1)^2)" $
