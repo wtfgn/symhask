@@ -1,3 +1,12 @@
+-- |
+-- Module: SymHask.Symbolic.Polynomial.Generalised
+-- Description: Operations on generalised polynomials
+-- Copyright: Copyright 2026 wtfgn
+-- License: BSD-3-Clause
+-- Maintainer: exal59@yahoo.com
+--
+-- Handle polynomials in a generalised sense, where the "variables" can be arbitrary expressions (not just symbols),
+-- and the "coefficients" can be any expressions that are free of the variables.
 module SymHask.Symbolic.Polynomial.Generalised
     ( -- * Predicates
       isMonomialGpe
