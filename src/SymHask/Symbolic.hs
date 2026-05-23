@@ -34,7 +34,6 @@ module SymHask.Symbolic
     , SimplificationState (..)
     , Simplify (..)
     , unsimplify
-    , (!)
       -- * Predicates
     , isAtomic
     , isBinaryDiff
@@ -63,6 +62,7 @@ module SymHask.Symbolic
     , mkSum
     , mkSymbol
     , mkUnaryDiff
+    , (!)
       -- * Pattern Synonyms
       -- ** Expressions
       -- | When matching on these patterns, the underlying constructor is not exposed,
