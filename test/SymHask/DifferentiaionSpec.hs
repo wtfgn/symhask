@@ -47,8 +47,8 @@ import           SymHask.Symbolic                          (ExprError (..),
                                                             pattern Tan',
                                                             pattern Tanh',
                                                             unsimplify)
-import qualified SymHask.Symbolic.Calculus                 as Calc
-import qualified SymHask.Symbolic.Calculus.Differentiation as Internal
+import qualified SymHask.Calculus                 as Calc
+import qualified SymHask.Calculus.Differentiation as Internal
 import           Test.Tasty                                (TestTree, testGroup)
 import           Test.Tasty.HUnit                          (Assertion,
                                                             assertFailure,

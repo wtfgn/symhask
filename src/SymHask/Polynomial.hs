@@ -1,5 +1,5 @@
 -- |
--- Module: SymHask.Symbolic.Basic.Polynomial
+-- Module: SymHask.Polynomial
 -- Description: Operations on polynomials and monomials
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
@@ -7,7 +7,7 @@
 --
 -- Support for operations on polynomials and monomials,
 -- such as expansion, collection of like terms, and degree calculations.
-module SymHask.Symbolic.Polynomial
+module SymHask.Polynomial
     ( -- * Predicates
       isMonomialGpe
     , isMonomialSv
@@ -39,16 +39,16 @@ module SymHask.Symbolic.Polynomial
     , collectTerms
     ) where
 
-import           Control.Monad                              (foldM)
-import qualified Data.HashMap.Strict                        as HM
-import qualified Data.HashSet                               as HS
-import qualified Data.List.NonEmpty                         as NE
+import           Control.Monad                     (foldM)
+import qualified Data.HashMap.Strict               as HM
+import qualified Data.HashSet                      as HS
+import qualified Data.List.NonEmpty                as NE
+import           SymHask.Polynomial.Expansion
+import           SymHask.Polynomial.Generalised
+import           SymHask.Polynomial.Rational
+import           SymHask.Polynomial.SingleVariable
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Polynomial.Expansion
-import           SymHask.Symbolic.Polynomial.Generalised
-import           SymHask.Symbolic.Polynomial.Rational
-import           SymHask.Symbolic.Polynomial.SingleVariable
-import           SymHask.Symbolic.Simplification            ((.*.), (.+.))
+import           SymHask.Symbolic.Simplification   ((.*.), (.+.))
 
 {- | Collect like terms in a general polynomial expression.
 Returns the collected form of u, or Undefined (Left) if u is not a GPE in S.

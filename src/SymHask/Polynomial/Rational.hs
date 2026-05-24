@@ -1,5 +1,5 @@
 -- |
--- Module: SymHask.Symbolic.Polynomial.Rational
+-- Module: SymHask.Polynomial.Rational
 -- Description: Operations on rational expressions
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
@@ -7,7 +7,7 @@
 --
 -- Support for operations on rational expressions, including extracting numerators and denominators,
 -- and transforming expressions into rationalized form.
-module SymHask.Symbolic.Polynomial.Rational
+module SymHask.Polynomial.Rational
     ( -- * Rationalization
       rationalise
       -- * Utilities

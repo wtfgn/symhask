@@ -7,7 +7,7 @@ module SymHask.IntegrationSpec
 import qualified Data.HashSet                          as HS
 import           SymHask.Symbolic                      (UnsimplifiedExpr,
                                                         mkSymbol)
-import           SymHask.Symbolic.Calculus.Integration (integrate,
+import           SymHask.Calculus.Integration (integrate,
                                                         integrateLinear,
                                                         integrateTable,
                                                         trialSubstitutions)

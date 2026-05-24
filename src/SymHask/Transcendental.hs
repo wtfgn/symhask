@@ -11,7 +11,7 @@
 --
 -- Support for operations on transcendental functions,
 -- including expansion and contraction of exponential and trigonometric expressions.
-module SymHask.Symbolic.Transcendental
+module SymHask.Transcendental
     ( -- * Exponential
       contractExp
     , expandExp
@@ -27,12 +27,12 @@ import           Control.Monad.Error.Class         (throwError)
 import           Data.List.NonEmpty                (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                as NE
 import           Math.Combinatorics.Exact.Binomial (choose)
+import           SymHask.Polynomial                (algebraicExpand, denom,
+                                                    expandMainOp)
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic            (buildRestProduct,
                                                     buildRestSum, isZero,
                                                     mapOperands)
-import           SymHask.Symbolic.Polynomial       (algebraicExpand, denom,
-                                                    expandMainOp)
 import           SymHask.Symbolic.Simplification   ((.**.), (.*.), (.+.), (.-.),
                                                     (./.))
 -- | Contract exponential expressions by combining products of exponentials and

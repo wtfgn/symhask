@@ -87,10 +87,10 @@ For more examples, see the Haddock comments in `src/SymHask.hs` and the submodul
 - `SymHask.Printer` for output formatting.
 - `SymHask.Symbolic` for the core symbolic types.
 - `SymHask.Symbolic.Basic` for basic symbolic operations.
-- `SymHask.Symbolic.Calculus` for differentiation and integration.
-- `SymHask.Symbolic.Polynomial` for polynomial tools.
-- `SymHask.Symbolic.Simplification` for simplification routines.
-- `SymHask.Symbolic.Transcendental` for transcendental functions.
+- `SymHask.Calculus` for differentiation and integration.
+- `SymHask.Polynomial` for polynomial tools.
+- `SymHask.Simplification` for simplification routines.
+- `SymHask.Transcendental` for transcendental functions.
 
 ## License
 
