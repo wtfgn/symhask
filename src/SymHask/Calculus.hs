@@ -1,14 +1,14 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- |
--- Module: SymHask.Symbolic.Calculus
+-- Module: SymHask.Calculus
 -- Description: Symbolic differentiation and integration of expressions
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
 -- Maintainer: exal59@yahoo.com
 --
 -- Support for symbolic differentiation and integration of expressions.
-module SymHask.Symbolic.Calculus
+module SymHask.Calculus
     ( -- * Differentiation
       diff
     , mkDiffVar
@@ -17,10 +17,10 @@ module SymHask.Symbolic.Calculus
     , integrate
     ) where
 
-import           Control.Monad                             (foldM)
+import           Control.Monad                    (foldM)
+import qualified SymHask.Calculus.Differentiation as Differentiation
+import           SymHask.Calculus.Integration     (integrate)
 import           SymHask.Symbolic
-import qualified SymHask.Symbolic.Calculus.Differentiation as Differentiation
-import           SymHask.Symbolic.Calculus.Integration     (integrate)
 -- | Differentiate a simplified expression with respect to a `DiffVar`.
 --
 -- >>> let expr = "x"**2 + "y" :: UnsimplifiedExpr

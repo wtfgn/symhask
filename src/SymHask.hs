@@ -30,20 +30,20 @@
 -- >>> toHaskell <$> result
 -- Right "1 + 2 * x + x ^ 2"
 module SymHask
-    ( module SymHask.Printer
+    ( module SymHask.Calculus
+    , module SymHask.Polynomial
+    , module SymHask.Printer
     , module SymHask.Symbolic
     , module SymHask.Symbolic.Basic
-    , module SymHask.Symbolic.Calculus
-    , module SymHask.Symbolic.Polynomial
     , module SymHask.Symbolic.Simplification
-    , module SymHask.Symbolic.Transcendental
+    , module SymHask.Transcendental
     ) where
 
 
+import           SymHask.Calculus
+import           SymHask.Polynomial
 import           SymHask.Printer
 import           SymHask.Symbolic
 import           SymHask.Symbolic.Basic
-import           SymHask.Symbolic.Calculus
-import           SymHask.Symbolic.Polynomial
 import           SymHask.Symbolic.Simplification
-import           SymHask.Symbolic.Transcendental
+import           SymHask.Transcendental

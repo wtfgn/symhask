@@ -48,7 +48,6 @@ import           Control.Monad.Error.Class           (throwError)
 import qualified Data.HashSet                        as HS
 import qualified Data.List.NonEmpty                  as NE
 import           Data.Text                           (Text)
-import           SymHask.Printer
 import           SymHask.Symbolic
 import qualified SymHask.Symbolic.Basic.Substitution as Substitution
 import           SymHask.Symbolic.Simplification

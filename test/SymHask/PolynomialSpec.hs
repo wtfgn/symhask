@@ -10,7 +10,7 @@ import           SymHask.Symbolic            (ExprError (..), SimplifiedExpr,
                                               Simplify (simplify),
                                               UnsimplifiedExpr, mkFraction,
                                               mkFunction, mkNumber, mkSymbol)
-import           SymHask.Symbolic.Polynomial (algebraicExpand, coeffVarMonomial,
+import           SymHask.Polynomial (algebraicExpand, coeffVarMonomial,
                                               coefficientGpe, coefficientSv,
                                               collectTerms, degreeGpe,
                                               degreeMonomialSv, degreeSv, denom,

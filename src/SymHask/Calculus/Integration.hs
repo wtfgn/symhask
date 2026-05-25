@@ -3,7 +3,7 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 -- |
--- Module: SymHask.Symbolic.Calculus.Integration
+-- Module: SymHask.Calculus.Integration
 -- Description: Symbolic integration of expressions
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
@@ -11,7 +11,7 @@
 --
 -- Integration of symbolic expressions with respect to variables,
 -- including support for common functions and an integration table for pattern matching.
-module SymHask.Symbolic.Calculus.Integration
+module SymHask.Calculus.Integration
     ( -- * Algorithms
       integrate
     , integrateLinear
@@ -20,24 +20,22 @@ module SymHask.Symbolic.Calculus.Integration
     , trialSubstitutions
     ) where
 
-import           Control.Applicative                       ((<|>))
-import           Data.Either.Extra                         (eitherToMaybe)
-import qualified Data.HashSet                              as HS
-import           Data.List                                 (find, sortOn)
-import           Data.List.NonEmpty                        (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty                        as NE
-import           Data.Text                                 (Text)
+import           Control.Applicative              ((<|>))
+import           Data.Either.Extra                (eitherToMaybe)
+import qualified Data.HashSet                     as HS
+import           Data.List                        (find, sortOn)
+import           Data.List.NonEmpty               (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty               as NE
+import           Data.Text                        (Text)
+import           SymHask.Calculus.Differentiation (diff, mkDiffVar)
+import           SymHask.Polynomial.Expansion     (algebraicExpand)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic                    (Pattern (..),
-                                                            Replacement (..),
-                                                            completeSubExprs,
-                                                            freeOf,
-                                                            separateFactors,
-                                                            subs, treeSize)
-import           SymHask.Symbolic.Calculus.Differentiation (diff, mkDiffVar)
-import           SymHask.Symbolic.Polynomial               (algebraicExpand)
-import           SymHask.Symbolic.Simplification           ((.**.), (.*.),
-                                                            (./.))
+import           SymHask.Symbolic.Basic           (Pattern (..),
+                                                   Replacement (..),
+                                                   completeSubExprs, freeOf,
+                                                   separateFactors, subs,
+                                                   treeSize)
+import           SymHask.Symbolic.Simplification  ((.**.), (.*.), (./.))
 -- ============================================================================
 
 -- * Data Types

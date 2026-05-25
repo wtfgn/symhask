@@ -1,25 +1,24 @@
 -- |
--- Module: SymHask.Symbolic.Polynomial.Expansion
+-- Module: SymHask.Polynomial.Expansion
 -- Description: Algebraic expansion of symbolic expressions
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
 -- Maintainer: exal59@yahoo.com
-module SymHask.Symbolic.Polynomial.Expansion
+module SymHask.Polynomial.Expansion
     ( algebraicExpand
     , expandMainOp
     , rationalExpand
     ) where
 
-import           Control.Monad.Error.Class            (MonadError (throwError))
-import           Data.List.NonEmpty                   (NonEmpty ((:|)))
-import qualified Data.List.NonEmpty                   as NE
-import           Math.Combinatorics.Exact.Binomial    (choose)
+import           Control.Monad.Error.Class         (MonadError (throwError))
+import           Data.List.NonEmpty                (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty                as NE
+import           Math.Combinatorics.Exact.Binomial (choose)
+import           SymHask.Polynomial.Rational       (denom, numer, rationalise)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic               (buildRestProduct,
-                                                       buildRestSum)
-import           SymHask.Symbolic.Polynomial.Rational (denom, numer,
-                                                       rationalise)
-import           SymHask.Symbolic.Simplification      ((.*.), (.+.), (./.))
+import           SymHask.Symbolic.Basic            (buildRestProduct,
+                                                    buildRestSum)
+import           SymHask.Symbolic.Simplification   ((.*.), (.+.), (./.))
 
 -- $setup
 -- >>> import SymHask.Symbolic

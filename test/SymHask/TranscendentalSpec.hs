@@ -5,7 +5,7 @@ module SymHask.TranscendentalSpec
     ) where
 
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Transcendental (contractExp, contractTrig,
+import           SymHask.Transcendental (contractExp, contractTrig,
                                                   expandExp, expandTrig,
                                                   separateSinCos, trigSubs)
 import           Test.Tasty                      (TestTree, testGroup)

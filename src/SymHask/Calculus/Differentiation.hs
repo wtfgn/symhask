@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- |
--- Module: SymHask.Symbolic.Calculus.Differentiation
+-- Module: SymHask.Calculus.Differentiation
 -- Description: Symbolic differentiation of expressions
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
@@ -9,7 +9,7 @@
 --
 -- Differentiation of symbolic expressions with respect to variables
 -- , including support for standard functions and a generalized chain rule for undefined functions.
-module SymHask.Symbolic.Calculus.Differentiation
+module SymHask.Calculus.Differentiation
     ( -- * Data Types
       DiffVar
       -- * Helpers

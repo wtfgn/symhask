@@ -1,5 +1,5 @@
 -- |
--- Module: SymHask.Symbolic.Polynomial.Generalised
+-- Module: SymHask.Polynomial.Generalised
 -- Description: Operations on generalised polynomials
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
@@ -7,7 +7,7 @@
 --
 -- Handle polynomials in a generalised sense, where the "variables" can be arbitrary expressions (not just symbols),
 -- and the "coefficients" can be any expressions that are free of the variables.
-module SymHask.Symbolic.Polynomial.Generalised
+module SymHask.Polynomial.Generalised
     ( -- * Predicates
       isMonomialGpe
     , isPolynomialGpe
@@ -24,15 +24,14 @@ module SymHask.Symbolic.Polynomial.Generalised
     , variables
     ) where
 
-import           Control.Monad                        (foldM)
-import qualified Data.HashSet                         as HS
-import qualified Data.List.NonEmpty                   as NE
-import           Data.Maybe                           (catMaybes)
+import           Control.Monad                   (foldM)
+import qualified Data.HashSet                    as HS
+import qualified Data.List.NonEmpty              as NE
+import           Data.Maybe                      (catMaybes)
+import           SymHask.Polynomial.Rational     (denom, numer)
 import           SymHask.Symbolic
-import           SymHask.Symbolic.Basic               (freeOf, setFreeOf)
-import           SymHask.Symbolic.Polynomial.Rational (denom, numer)
-import           SymHask.Symbolic.Simplification      ((.**.), (.*.), (.+.),
-                                                       (./.))
+import           SymHask.Symbolic.Basic          (freeOf, setFreeOf)
+import           SymHask.Symbolic.Simplification ((.**.), (.*.), (.+.), (./.))
 --
 -- $setup
 -- >>> import SymHask.Printer (toHaskell)

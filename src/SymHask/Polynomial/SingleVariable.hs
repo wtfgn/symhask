@@ -1,12 +1,12 @@
 -- |
--- Module: SymHask.Symbolic.Polynomial.SingleVariable
+-- Module: SymHask.Polynomial.SingleVariable
 -- Description: Operations on single-variable polynomials
 -- Copyright: Copyright 2026 wtfgn
 -- License: BSD-3-Clause
 -- Maintainer: exal59@yahoo.com
 --
 -- Support for operations on polynomials and monomials, including checking
-module SymHask.Symbolic.Polynomial.SingleVariable
+module SymHask.Polynomial.SingleVariable
     ( -- * Predicates
       isMonomialSv
     , isPolynomialSv
