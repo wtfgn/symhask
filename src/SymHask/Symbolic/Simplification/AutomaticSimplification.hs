@@ -337,6 +337,7 @@ infix 4 <.
 (<.) (Number' n1) (Number' n2) = n1 < n2
 (<.) (Fraction' n1 d1) (Fraction' n2 d2) = n1 * d2 < n2 * d1
 (<.) (Number' x) (Fraction' n d) = x * d < n
+(<.) (Fraction' n d) (Number' x) = n < x * d
 -- Compare symbols (lexicographically)
 (<.) (Symbol' s1) (Symbol' s2) = s1 < s2
 -- Compare products and sums by their operands [u_1, ..., u_m] and [v_1, ..., v_n]
